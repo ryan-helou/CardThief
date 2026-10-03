@@ -1,46 +1,66 @@
 import { execFile } from 'node:child_process';
 import { loadConfig, log } from './util.mjs';
 
-const money = n => `$${Math.round(n)}`;
+// Deals go to the CardThief app (Railway), which stores them and pushes to Ryan's phone.
+// The Mac also shows a banner so a deal is visible even when the phone is away.
 
-export function formatDeal(l, r) {
-  const head = r.tier === 'steal' ? '🔥 STEAL' : r.tier === 'good' ? '✅ Good deal' : 'Deal';
-  const title = `${head} +${money(r.profit)} · ${l.title}`.slice(0, 120);
-  const top = [...r.lines].sort((a, b) => b.marketCad - a.marketCad).slice(0, 5);
-  const msg = [
-    `${l.source.toUpperCase()} · ${money(r.cost)} all-in → ~${money(r.resale)} after eBay fees · ROI ${Math.round(r.roi * 100)}%`,
-    l.location ? `📍 ${l.location}` : '',
-    l.bids != null ? `⏱ ${l.bids} bids, ends ${new Date(l.endsAt).toLocaleString('en-CA')}` : '',
-    ...top.map(x => `• ${x.label}: ${money(x.marketCad)} (${x.basis})`),
-    r.bulk ? `• bulk: ${money(r.bulk)}` : '',
-    r.ident.fakeRisk !== 'low' ? `⚠️ fake risk ${r.ident.fakeRisk}: ${r.ident.fakeReasons || ''}` : '',
-    r.ident.summary,
-    r.ident.hiddenUpside ? `💡 ${r.ident.hiddenUpside}` : '',
-    r.ident.askSeller ? `❓ Ask: ${r.ident.askSeller}` : '',
-  ].filter(Boolean).join('\n');
-  return { title, msg };
-}
-
-export async function push({ title, msg, url, image, priority = 4, tags = [] }) {
+async function app(path, body) {
   const cfg = loadConfig();
-  if (cfg.ntfyTopic) {
-    try {
-      const res = await fetch('https://ntfy.sh/', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ topic: cfg.ntfyTopic, title, message: msg, priority, tags, click: url, attach: image, actions: url ? [{ action: 'view', label: 'Open listing', url }] : undefined }),
-      });
-      if (!res.ok) log('ntfy failed', res.status, await res.text());
-    } catch (e) {
-      log('ntfy error', e.message);
-    }
-  }
-  // Mac banner too, so a deal is visible even if the phone is away.
-  const esc = s => String(s).replace(/["\\]/g, ' ').slice(0, 200);
-  execFile('osascript', ['-e', `display notification "${esc(msg.split('\n')[0])}" with title "${esc(title)}" sound name "Glass"`], () => {});
+  if (!cfg.appUrl || !cfg.agentToken) return null;
+  const res = await fetch(new URL(path, cfg.appUrl), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.agentToken}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`app ${path} ${res.status} ${(await res.text()).slice(0, 200)}`);
+  return res.json();
 }
 
-if (process.argv.includes('--test')) {
-  await push({ title: '🔥 CardThief test', msg: 'If you can read this on your phone, alerts work.', url: 'https://www.kijiji.ca', tags: ['white_check_mark'] });
-  console.log('sent test alert to topic', loadConfig().ntfyTopic || '(no ntfyTopic set — Mac banner only)');
+export function toDeal(l, r) {
+  return {
+    id: l.id,
+    source: l.source,
+    url: l.url,
+    title: l.title,
+    photo: l.images?.[0],
+    location: l.location,
+    postedAt: l.postedAt,
+    foundAt: new Date().toISOString(),
+    price: l.priceCad,
+    shipping: l.shippingCad || 0,
+    cost: +r.cost.toFixed(2),
+    resale: +r.resale.toFixed(2),
+    profit: +r.profit.toFixed(2),
+    roi: +r.roi.toFixed(3),
+    tier: r.tier,
+    kind: r.ident.kind,
+    fakeRisk: r.ident.fakeRisk,
+    fakeReasons: r.ident.fakeReasons || '',
+    lines: r.lines,
+    summary: r.ident.summary,
+    hiddenUpside: r.ident.hiddenUpside || '',
+    askSeller: r.ident.askSeller || '',
+    bids: l.bids ?? null,
+    endsAt: l.endsAt ?? null,
+    seller: l.seller || '',
+  };
+}
+
+export async function sendDeal(deal) {
+  try {
+    const r = await app('/api/agent/deal', deal);
+    if (r) log('app deal', deal.id, r.isNew ? 'new' : 'updated', JSON.stringify(r.push));
+  } catch (e) {
+    log('app deal failed', e.message);
+  }
+  macBanner(`${deal.tier === 'steal' ? '🔥 Steal' : 'Good deal'} +$${Math.round(deal.profit)}`, `$${deal.price} · ${deal.title}`);
+}
+
+export async function heartbeat(h) {
+  try { await app('/api/agent/heartbeat', h); } catch (e) { log('heartbeat failed', e.message); }
+}
+
+function macBanner(title, msg) {
+  const esc = s => String(s).replace(/["\\]/g, ' ').slice(0, 200);
+  execFile('osascript', ['-e', `display notification "${esc(msg)}" with title "${esc(title)}" sound name "Glass"`], () => {});
 }

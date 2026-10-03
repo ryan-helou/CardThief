@@ -4,7 +4,7 @@ import { loadConfig, log, sleep, jitter, Seen, appendJsonl, DATA } from './util.
 import { searchKijiji, kijijiDetail } from './sources/kijiji.mjs';
 import { searchEbay, ebayDetail, ebayReady } from './sources/ebay.mjs';
 import { prefilter, judge } from './judge.mjs';
-import { formatDeal, push } from './notify.mjs';
+import { toDeal, sendDeal, heartbeat } from './notify.mjs';
 import { getFx } from './price.mjs';
 
 const ONCE = process.argv.includes('--once');
@@ -14,6 +14,8 @@ const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, '
 const saveState = () => fs.writeFileSync(statePath, JSON.stringify(state, null, 1));
 
 const queue = [];
+const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+const stats = { day: today(), judged: 0, deals: 0, kijiji: null, ebay: null, lastError: null };
 const judgedAt = [];
 
 function enqueue(cfg, l) {
@@ -30,7 +32,8 @@ async function pollKijiji(cfg) {
     try {
       const list = await searchKijiji(url);
       list.forEach(l => enqueue(cfg, l));
-    } catch (e) { log('kijiji search failed', e.message); }
+      stats.kijiji = new Date().toISOString();
+    } catch (e) { log('kijiji search failed', e.message); stats.lastError = `kijiji: ${e.message}`; }
     await sleep(jitter(4000));
   }
 }
@@ -45,6 +48,7 @@ async function pollEbay(cfg) {
     try {
       const list = await searchEbay(cfg, q, since, fx);
       list.forEach(l => enqueue(cfg, l));
+      stats.ebay = new Date().toISOString();
       state[key] = new Date(started.getTime() - 5 * 60e3).toISOString(); // small overlap; seen-set dedupes
     } catch (e) { log('ebay search failed', q.q, e.message); }
   }
@@ -65,16 +69,18 @@ async function drain(cfg) {
       if (l.source === 'ebay') l = await ebayDetail(cfg, l, await getFx());
       const r = await judge(cfg, l);
       seen.add(l.id); seen.save();
+      stats.judged++;
       const rec = { at: new Date().toISOString(), id: l.id, url: l.url, title: l.title, price: l.priceCad, tier: r.tier, profit: +r.profit.toFixed(2), roi: +r.roi.toFixed(2), resale: +r.resale.toFixed(2), kind: r.ident.kind, fakeRisk: r.ident.fakeRisk, lines: r.lines, summary: r.ident.summary, askSeller: r.ident.askSeller };
       appendJsonl('judged', rec);
       log(`${r.tier.toUpperCase().padEnd(5)} ${l.id} $${l.priceCad} → profit $${r.profit.toFixed(0)} (${Math.round(r.roi * 100)}%) ${l.title}`);
       if (r.tier !== 'pass') {
         appendJsonl('deals', rec);
-        const { title, msg } = formatDeal(l, r);
-        await push({ title, msg, url: l.url, image: l.images[0], priority: r.tier === 'steal' ? 5 : 4, tags: [r.tier === 'steal' ? 'fire' : 'moneybag'] });
+        stats.deals++;
+        await sendDeal(toDeal(l, r));
       }
     } catch (e) {
       log('judge failed', l.id, e.message);
+      stats.lastError = `${new Date().toISOString()} ${e.message}`.slice(0, 200);
       l.failures = (l.failures || 0) + 1;
       if (l.failures < 3) queue.push(l); else { seen.add(l.id); seen.save(); }
       await sleep(30_000);
@@ -92,7 +98,11 @@ async function main() {
     if (c.kijiji.enabled && now >= nextKijiji) { await pollKijiji(c); nextKijiji = now + jitter(c.kijiji.everyMinutes * 60e3); }
     if (c.ebay.enabled && now >= nextEbay) { await pollEbay(c); nextEbay = now + jitter(c.ebay.everyMinutes * 60e3); }
     seen.save();
+    if (stats.day !== today()) Object.assign(stats, { day: today(), judged: 0, deals: 0 });
+    const beat = () => heartbeat({ kijiji: stats.kijiji, ebay: ebayReady(c) ? stats.ebay : null, queue: queue.length, judgedToday: stats.judged, dealsToday: stats.deals, lastError: stats.lastError });
+    await beat();
     await drain(c);
+    await beat();
     if (ONCE) break;
     await sleep(20_000);
   }

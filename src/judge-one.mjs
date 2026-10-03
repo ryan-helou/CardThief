@@ -2,7 +2,7 @@
 import { loadConfig } from './util.mjs';
 import { kijijiDetail } from './sources/kijiji.mjs';
 import { prefilter, judge } from './judge.mjs';
-import { formatDeal } from './notify.mjs';
+
 
 const url = process.argv[2];
 const id = url?.match(/\/(\d+)(\?|$)/)?.[1];
@@ -11,6 +11,6 @@ const cfg = loadConfig();
 const l = await kijijiDetail({ source: 'kijiji', id: `kijiji:${id}`, url, images: [] });
 console.log('prefilter:', prefilter(cfg, l) || 'pass');
 const r = await judge(cfg, l);
-const { title, msg } = formatDeal(l, r);
-console.log(`\n[${r.tier}] ${title}\n${msg}\n`);
+console.log(`\n[${r.tier}] cost $${r.cost.toFixed(0)} → resale $${r.resale.toFixed(0)} = profit $${r.profit.toFixed(0)} (${Math.round(r.roi * 100)}%)`);
+for (const x of r.lines) console.log(`  ${x.label}: $${x.marketCad} (${x.basis})`);
 console.log(JSON.stringify(r.ident, null, 1));

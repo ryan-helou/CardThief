@@ -1,0 +1,102 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { loadConfig, log, sleep, jitter, Seen, appendJsonl, DATA } from './util.mjs';
+import { searchKijiji, kijijiDetail } from './sources/kijiji.mjs';
+import { searchEbay, ebayDetail, ebayReady } from './sources/ebay.mjs';
+import { prefilter, judge } from './judge.mjs';
+import { formatDeal, push } from './notify.mjs';
+import { getFx } from './price.mjs';
+
+const ONCE = process.argv.includes('--once');
+const seen = new Seen('seen');
+const statePath = path.join(DATA, 'state.json');
+const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : {};
+const saveState = () => fs.writeFileSync(statePath, JSON.stringify(state, null, 1));
+
+const queue = [];
+const judgedAt = [];
+
+function enqueue(cfg, l) {
+  if (seen.has(l.id) || queue.some(q => q.id === l.id)) return;
+  const age = Date.now() - new Date(l.postedAt).getTime();
+  if (age > cfg.firstRunLookbackHours * 3600e3) { seen.add(l.id); return; } // old or bumped ad
+  const why = prefilter(cfg, l);
+  if (why) { seen.add(l.id); appendJsonl('skipped', { at: new Date().toISOString(), id: l.id, title: l.title, price: l.priceCad, why }); return; }
+  queue.push(l);
+}
+
+async function pollKijiji(cfg) {
+  for (const url of cfg.kijiji.searches) {
+    try {
+      const list = await searchKijiji(url);
+      list.forEach(l => enqueue(cfg, l));
+    } catch (e) { log('kijiji search failed', e.message); }
+    await sleep(jitter(4000));
+  }
+}
+
+async function pollEbay(cfg) {
+  if (!ebayReady(cfg)) return;
+  const fx = await getFx();
+  for (const q of cfg.ebay.queries) {
+    const key = `ebay:${q.q}:${q.filter}`;
+    const since = new Date(state[key] || Date.now() - cfg.firstRunLookbackHours * 3600e3);
+    const started = new Date();
+    try {
+      const list = await searchEbay(cfg, q, since, fx);
+      list.forEach(l => enqueue(cfg, l));
+      state[key] = new Date(started.getTime() - 5 * 60e3).toISOString(); // small overlap; seen-set dedupes
+    } catch (e) { log('ebay search failed', q.q, e.message); }
+  }
+  saveState();
+}
+
+async function drain(cfg) {
+  while (queue.length) {
+    const hourAgo = Date.now() - 3600e3;
+    while (judgedAt.length && judgedAt[0] < hourAgo) judgedAt.shift();
+    if (judgedAt.length >= cfg.maxJudgementsPerHour) { log(`judge budget hit, ${queue.length} waiting`); return; }
+    // Cheapest first: the best ROI tends to hide in the low-priced listings.
+    queue.sort((a, b) => a.priceCad - b.priceCad);
+    let l = queue.shift();
+    judgedAt.push(Date.now());
+    try {
+      if (l.source === 'kijiji') l = await kijijiDetail(l);
+      if (l.source === 'ebay') l = await ebayDetail(cfg, l, await getFx());
+      const r = await judge(cfg, l);
+      seen.add(l.id); seen.save();
+      const rec = { at: new Date().toISOString(), id: l.id, url: l.url, title: l.title, price: l.priceCad, tier: r.tier, profit: +r.profit.toFixed(2), roi: +r.roi.toFixed(2), resale: +r.resale.toFixed(2), kind: r.ident.kind, fakeRisk: r.ident.fakeRisk, lines: r.lines, summary: r.ident.summary, askSeller: r.ident.askSeller };
+      appendJsonl('judged', rec);
+      log(`${r.tier.toUpperCase().padEnd(5)} ${l.id} $${l.priceCad} → profit $${r.profit.toFixed(0)} (${Math.round(r.roi * 100)}%) ${l.title}`);
+      if (r.tier !== 'pass') {
+        appendJsonl('deals', rec);
+        const { title, msg } = formatDeal(l, r);
+        await push({ title, msg, url: l.url, image: l.images[0], priority: r.tier === 'steal' ? 5 : 4, tags: [r.tier === 'steal' ? 'fire' : 'moneybag'] });
+      }
+    } catch (e) {
+      log('judge failed', l.id, e.message);
+      l.failures = (l.failures || 0) + 1;
+      if (l.failures < 3) queue.push(l); else { seen.add(l.id); seen.save(); }
+      await sleep(30_000);
+    }
+  }
+}
+
+async function main() {
+  const cfg = loadConfig();
+  log(`CardThief up · kijiji ${cfg.kijiji.enabled ? 'on' : 'off'} · ebay ${ebayReady(cfg) ? 'on' : 'off (no keys yet)'} · seen ${seen.size}`);
+  let nextKijiji = 0, nextEbay = 0;
+  for (;;) {
+    const c = loadConfig(); // re-read so config edits apply without a restart
+    const now = Date.now();
+    if (c.kijiji.enabled && now >= nextKijiji) { await pollKijiji(c); nextKijiji = now + jitter(c.kijiji.everyMinutes * 60e3); }
+    if (c.ebay.enabled && now >= nextEbay) { await pollEbay(c); nextEbay = now + jitter(c.ebay.everyMinutes * 60e3); }
+    seen.save();
+    await drain(c);
+    if (ONCE) break;
+    await sleep(20_000);
+  }
+  log('done');
+}
+
+main().catch(e => { log('fatal', e.stack || e.message); process.exit(1); });

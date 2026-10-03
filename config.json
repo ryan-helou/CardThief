@@ -1,0 +1,55 @@
+{
+  "kijiji": {
+    "enabled": true,
+    "everyMinutes": 4,
+    "searches": [
+      "https://www.kijiji.ca/b-grand-montreal/pokemon/k0l80002?sort=dateDesc",
+      "https://www.kijiji.ca/b-grand-montreal/cartes-pokemon/k0l80002?sort=dateDesc"
+    ]
+  },
+  "ebay": {
+    "enabled": true,
+    "everyMinutes": 2,
+    "marketplace": "EBAY_CA",
+    "queries": [
+      {
+        "q": "pokemon lot",
+        "filter": "deliveryCountry:CA"
+      },
+      {
+        "q": "pokemon cards collection binder",
+        "filter": "deliveryCountry:CA"
+      },
+      {
+        "q": "pokemon card",
+        "filter": "itemLocationCountry:CA"
+      }
+    ]
+  },
+  "firstRunLookbackHours": 24,
+  "maxBuyCad": 500,
+  "maxJudgementsPerHour": 20,
+  "judgeModel": "sonnet",
+  "money": {
+    "ebaySellFee": 0.1325,
+    "ebayOrderFee": 0.4,
+    "singleShipCad": 3.0,
+    "singleMinCad": 10,
+    "cheapCardFactor": 0.4,
+    "rawConditionHaircut": 0.85,
+    "bulkCadPerCard": 0.02,
+    "buyerTaxOnline": 0.14975
+  },
+  "deal": {
+    "steal": {
+      "minProfitCad": 40,
+      "minRoi": 0.5
+    },
+    "good": {
+      "minProfitCad": 20,
+      "minRoi": 0.3
+    }
+  },
+  "titleMustMatch": "carte|cards?|lot|classeur|cartable|binder|collection|vrac|bulk|holo|psa|cgc|bgs|\\bex\\b|\\bgx\\b|vmax|vstar|booster|etb|display|rare|foil|full art|alt art|\\bsir\\b|\\bsar\\b|promo|graded|slab|tcg|charizard|dracaufeu|pikachu|umbreon|noctali|mewtwo|lugia|rayquaza|gengar|ectoplasma",
+  "titleExclude": "\\b(ds|3ds|switch|wii|gameboy|game boy|jeu vid[eé]o|video game|funko|pop!|figurine|figure|puzzle|casse-t[eê]te|lego|toutou|peluche|plush|tumbler|chandail|shirt|t-shirt|tank top|hoodie|magazine|yahtzee|monopoly|costume|sac|backpack|lampe|poster|affiche|wall art|build a bear|soulsilver|heartgold|platinum|emerald|sapphire|ruby)\\b"
+}

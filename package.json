@@ -1,0 +1,13 @@
+{
+  "name": "cardthief",
+  "private": true,
+  "type": "module",
+  "description": "Finds underpriced Pokémon cards on Kijiji and eBay, prices them, and pushes steals to Ryan's phone.",
+  "scripts": {
+    "start": "node src/run.mjs",
+    "once": "node src/run.mjs --once",
+    "judge": "node src/judge-one.mjs",
+    "test-alert": "node src/notify.mjs --test"
+  },
+  "engines": { "node": ">=20" }
+}

@@ -31,6 +31,7 @@ function BotStatus({ hb }: { hb: Heartbeat | null }) {
   return (
     <p className="mt-2 text-sm text-[var(--ink-2)]">
       <span className="text-[var(--good)]">● Hunting.</span> Kijiji checked {ago(hb.kijiji)}
+      {hb.facebook !== undefined && <> · Marketplace {hb.facebook ? `checked ${ago(hb.facebook)}` : "off"}</>}
       {hb.ebay !== undefined && <> · eBay {hb.ebay ? `checked ${ago(hb.ebay)}` : "off"}</>}
       {typeof hb.judgedToday === "number" && <> · {hb.judgedToday} listings judged today</>}
       {hb.queue ? <> · {hb.queue} waiting</> : null}
@@ -168,7 +169,7 @@ export default async function Home() {
       <header className="mb-5">
         <h1 className="text-2xl font-semibold">CardThief</h1>
         <p className="mt-1 text-sm text-[var(--ink-3)]">
-          Pokémon cards on Kijiji and eBay, priced after eBay fees. Steal = $40+ profit at 50%+ return.
+          Pokémon cards on Marketplace, Kijiji and eBay, priced after eBay fees. Steal = $40+ profit at 50%+ return.
         </p>
         <BotStatus hb={hb} />
         <Tally rows={rows} />

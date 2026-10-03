@@ -26,6 +26,25 @@
       }
     ]
   },
+  "facebook": {
+    "enabled": true,
+    "everyMinutes": 25,
+    "activeHours": [
+      8,
+      23
+    ],
+    "city": "montreal",
+    "headless": true,
+    "pauseBetweenQueriesSec": 20,
+    "queries": [
+      "cartes pokemon",
+      "lot cartes pokemon",
+      "classeur pokemon",
+      "pokemon cards lot",
+      "pokemon binder",
+      "collection pokemon"
+    ]
+  },
   "firstRunLookbackHours": 24,
   "maxBuyCad": 500,
   "maxJudgementsPerHour": 20,

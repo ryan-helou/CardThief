@@ -48,6 +48,7 @@ export interface Heartbeat {
   at: string;
   kijiji?: string; // last successful poll
   ebay?: string | null;
+  facebook?: string | null;
   queue?: number;
   judgedToday?: number;
   dealsToday?: number;

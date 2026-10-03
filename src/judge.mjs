@@ -7,9 +7,11 @@ import { priceCard, getFx } from './price.mjs';
 // ---------- 1. Free prefilter: drop anything that obviously isn't Pokémon cards ----------
 export function prefilter(cfg, l) {
   const text = `${l.title} ${l.description}`.toLowerCase();
-  if (!/pok[eé]mon|pokemon/.test(text)) return 'not pokemon';
+  // Facebook search tiles carry only a short title, and the queries already ask for cards.
+  const fb = l.source === 'facebook';
+  if (!fb && !/pok[eé]mon|pokemon/.test(text)) return 'not pokemon';
   if (new RegExp(cfg.titleExclude, 'i').test(l.title)) return 'excluded item type';
-  if (!new RegExp(cfg.titleMustMatch, 'i').test(text)) return 'no card keywords';
+  if (!fb && !new RegExp(cfg.titleMustMatch, 'i').test(text)) return 'no card keywords';
   if (l.priceCad == null) return l.priceType === 'CONTACT' ? 'no price (contact)' : 'no price';
   if (l.priceCad <= 0) return 'free/zero price';
   if (l.priceCad > cfg.maxBuyCad) return `over max buy ($${l.priceCad})`;

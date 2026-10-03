@@ -6,5 +6,7 @@ const ctx = await openBrowser({ headless: false });
 const page = ctx.pages()[0] || (await ctx.newPage());
 await page.goto('https://www.facebook.com/marketplace/montreal/');
 console.log('Log into Facebook in the window that opened, check Marketplace loads, then close the window.');
-await new Promise(r => ctx.on('close', r));
+// On a Mac, closing the last window leaves Chrome running, so wait for the tab to close instead.
+await new Promise(r => { page.on('close', r); ctx.on('close', r); });
+await ctx.close().catch(() => {});
 console.log('Saved. The bot will use this login.');

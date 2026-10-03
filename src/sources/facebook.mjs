@@ -65,7 +65,8 @@ export async function sweepFacebook(cfg) {
       for (const t of tiles) {
         if (found.has(t.id)) continue;
         const priceLine = t.lines.find(s => /\$|gratuit|free/i.test(s)) || t.lines[0];
-        const rest = t.lines.filter(s => s !== priceLine && !/^\$|^\d[\d\s,.]*\s?\$$/.test(s));
+        // Drop badges ("Just listed") and struck-through old prices ("CA$110").
+        const rest = t.lines.filter(s => s !== priceLine && !/^(CA)?\$|^\d[\d\s,.]*\s?\$$|^just listed$|^nouveau|^vient d/i.test(s));
         found.set(t.id, {
           source: 'facebook',
           id: `facebook:${t.id}`,
@@ -102,7 +103,9 @@ export async function facebookDetail(cfg, listing) {
         .filter(i => /scontent|fbcdn/.test(i.src) && (i.naturalWidth >= 300 || i.width >= 200))
         .map(i => i.src);
       const title = main.querySelector('h1')?.innerText || '';
-      return { text: main.innerText.slice(0, 4000), imgs: [...new Set(imgs)], title };
+      // Stop before the seller's profile and the ads: only the listing itself is needed.
+      const text = main.innerText.split(/\n(Seller information|Informations sur le vendeur|Today's picks|Sponsored)\n/)[0];
+      return { text: text.slice(0, 4000), imgs: [...new Set(imgs)], title };
     });
     // Thumbnail strip: click through so the larger photos load.
     const thumbs = page.locator('[role="main"] [aria-label*="Thumbnail"], [role="main"] div[role="button"] img');

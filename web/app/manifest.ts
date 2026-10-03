@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "CardThief",
     short_name: "CardThief",
-    description: "Underpriced Pokémon cards on Kijiji and eBay, found and priced around the clock.",
+    description: "Underpriced Pokémon cards on Marketplace, Kijiji and eBay, found and priced around the clock.",
     start_url: "/",
     scope: "/",
     display: "standalone",

@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "CardThief",
-  description: "Underpriced Pokémon cards on Kijiji and eBay, found and priced around the clock.",
+  description: "Underpriced Pokémon cards on Marketplace, Kijiji and eBay, found and priced around the clock.",
   manifest: "/manifest.webmanifest",
   robots: { index: false, follow: false },
   icons: { apple: "/icons/apple-touch-icon.png" },

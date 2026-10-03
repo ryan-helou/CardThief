@@ -3,6 +3,7 @@ import path from 'node:path';
 import { loadConfig, log, sleep, jitter, Seen, appendJsonl, DATA } from './util.mjs';
 import { searchKijiji, kijijiDetail } from './sources/kijiji.mjs';
 import { searchEbay, ebayDetail, ebayReady } from './sources/ebay.mjs';
+import { sweepFacebook, facebookDetail, inActiveHours } from './sources/facebook.mjs';
 import { prefilter, judge } from './judge.mjs';
 import { toDeal, sendDeal, heartbeat } from './notify.mjs';
 import { getFx } from './price.mjs';
@@ -15,7 +16,7 @@ const saveState = () => fs.writeFileSync(statePath, JSON.stringify(state, null, 
 
 const queue = [];
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
-const stats = { day: today(), judged: 0, deals: 0, kijiji: null, ebay: null, lastError: null };
+const stats = { day: today(), judged: 0, deals: 0, kijiji: null, ebay: null, facebook: null, lastError: null };
 const judgedAt = [];
 let judgePausedUntil = 0;
 
@@ -56,6 +57,15 @@ async function pollEbay(cfg) {
   saveState();
 }
 
+async function pollFacebook(cfg) {
+  try {
+    const list = await sweepFacebook(cfg);
+    list.forEach(l => enqueue(cfg, l));
+    stats.facebook = new Date().toISOString();
+    log(`facebook sweep: ${list.length} listings, queue ${queue.length}`);
+  } catch (e) { log('facebook sweep failed', e.message); stats.lastError = `facebook: ${e.message}`.slice(0, 200); }
+}
+
 async function drain(cfg) {
   if (Date.now() < judgePausedUntil) return;
   while (queue.length) {
@@ -69,6 +79,7 @@ async function drain(cfg) {
     try {
       if (l.source === 'kijiji') l = await kijijiDetail(l);
       if (l.source === 'ebay') l = await ebayDetail(cfg, l, await getFx());
+      if (l.source === 'facebook') l = await facebookDetail(cfg, l);
       const r = await judge(cfg, l);
       seen.add(l.id); seen.save();
       stats.judged++;
@@ -99,16 +110,17 @@ async function drain(cfg) {
 
 async function main() {
   const cfg = loadConfig();
-  log(`CardThief up · kijiji ${cfg.kijiji.enabled ? 'on' : 'off'} · ebay ${ebayReady(cfg) ? 'on' : 'off (no keys yet)'} · seen ${seen.size}`);
-  let nextKijiji = 0, nextEbay = 0;
+  log(`CardThief up · kijiji ${cfg.kijiji.enabled ? 'on' : 'off'} · facebook ${cfg.facebook?.enabled ? 'on' : 'off'} · ebay ${ebayReady(cfg) ? 'on' : 'off (no keys yet)'} · seen ${seen.size}`);
+  let nextKijiji = 0, nextEbay = 0, nextFacebook = 0;
   for (;;) {
     const c = loadConfig(); // re-read so config edits apply without a restart
     const now = Date.now();
     if (c.kijiji.enabled && now >= nextKijiji) { await pollKijiji(c); nextKijiji = now + jitter(c.kijiji.everyMinutes * 60e3); }
     if (c.ebay.enabled && now >= nextEbay) { await pollEbay(c); nextEbay = now + jitter(c.ebay.everyMinutes * 60e3); }
+    if (c.facebook?.enabled && now >= nextFacebook && inActiveHours(c)) { await pollFacebook(c); nextFacebook = now + jitter(c.facebook.everyMinutes * 60e3, 0.3); }
     seen.save();
     if (stats.day !== today()) Object.assign(stats, { day: today(), judged: 0, deals: 0 });
-    const beat = () => heartbeat({ kijiji: stats.kijiji, ebay: ebayReady(c) ? stats.ebay : null, queue: queue.length, judgedToday: stats.judged, dealsToday: stats.deals, lastError: stats.lastError });
+    const beat = () => heartbeat({ kijiji: stats.kijiji, facebook: c.facebook?.enabled ? stats.facebook : null, ebay: ebayReady(c) ? stats.ebay : null, queue: queue.length, judgedToday: stats.judged, dealsToday: stats.deals, lastError: stats.lastError });
     await beat();
     await drain(c);
     await beat();

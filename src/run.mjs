@@ -17,6 +17,7 @@ const queue = [];
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
 const stats = { day: today(), judged: 0, deals: 0, kijiji: null, ebay: null, lastError: null };
 const judgedAt = [];
+let judgePausedUntil = 0;
 
 function enqueue(cfg, l) {
   if (seen.has(l.id) || queue.some(q => q.id === l.id)) return;
@@ -56,6 +57,7 @@ async function pollEbay(cfg) {
 }
 
 async function drain(cfg) {
+  if (Date.now() < judgePausedUntil) return;
   while (queue.length) {
     const hourAgo = Date.now() - 3600e3;
     while (judgedAt.length && judgedAt[0] < hourAgo) judgedAt.shift();
@@ -81,6 +83,13 @@ async function drain(cfg) {
     } catch (e) {
       log('judge failed', l.id, e.message);
       stats.lastError = `${new Date().toISOString()} ${e.message}`.slice(0, 200);
+      // Logged out / usage limit: nothing is wrong with the listing, so keep it queued and retry later.
+      if (/authenticat|log ?in|usage limit|rate limit|overloaded/i.test(e.message)) {
+        queue.unshift(l);
+        judgedAt.pop();
+        judgePausedUntil = Date.now() + 2 * 60e3;
+        return;
+      }
       l.failures = (l.failures || 0) + 1;
       if (l.failures < 3) queue.push(l); else { seen.add(l.id); seen.save(); }
       await sleep(30_000);

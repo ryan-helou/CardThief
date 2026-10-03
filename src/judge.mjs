@@ -11,6 +11,7 @@ export function prefilter(cfg, l) {
   const fb = l.source === 'facebook';
   if (!fb && !/pok[eé]mon|pokemon/.test(text)) return 'not pokemon';
   if (new RegExp(cfg.titleExclude, 'i').test(l.title)) return 'excluded item type';
+  if (/[ée]chang|\btrade\b|\bswap\b/i.test(l.title) && l.priceCad <= 5) return 'trade post (placeholder price)';
   if (/\b(vendu|sold|r[ée]serv[ée]|pending)\b/i.test(l.title)) return 'already sold';
   if (/\b(recherche|cherche|wanted|looking for|j'ach[eè]te|achat|buying|besoin d)/i.test(l.title)) return 'wanted/buyer post';
   if (!fb && !new RegExp(cfg.titleMustMatch, 'i').test(text)) return 'no card keywords';
@@ -52,12 +53,13 @@ const SCHEMA = {
       type: 'array',
       items: { type: 'object', properties: { product: { type: 'string' }, estUsd: { type: ['number', 'null'] }, quantity: { type: 'integer' } }, required: ['product', 'estUsd', 'quantity'] },
     },
+    realAskingPriceCad: { type: ['number', 'null'] },
     hiddenUpside: { type: 'string' },
     askSeller: { type: 'string' },
     confidence: { type: 'number' },
     summary: { type: 'string' },
   },
-  required: ['isPokemonCards', 'kind', 'language', 'fakeRisk', 'cards', 'sealed', 'confidence', 'summary', 'totalCardCount'],
+  required: ['isPokemonCards', 'kind', 'language', 'fakeRisk', 'cards', 'sealed', 'confidence', 'summary', 'totalCardCount', 'realAskingPriceCad'],
 };
 
 const PROMPT = l => `You are valuing a second-hand listing for a Pokémon card flipper in Montréal. He buys underpriced cards and resells them on eBay.
@@ -76,6 +78,7 @@ Return:
 - totalCardCount: total cards in the listing (stated or estimated), null if unknown.
 - sealed: sealed products with estUsd each.
 - fakeRisk: high for proxies/"custom"/"orica"/metal/gold-foil novelty cards, fake-looking fonts/colours, or prices far too good to be true.
+- realAskingPriceCad: Facebook/Kijiji sellers often list at $1 or $0 as a placeholder. If the listed price looks like a placeholder or differs from the real asking price stated in the description or photos, give the real total asking price in CAD (if it's per card, multiply out for the whole listing). If the stated price is real, return null.
 - hiddenUpside: what valuable cards might plausibly be in the parts not photographed (one sentence, or "").
 - askSeller: the one question/photo request that would most change the value (in French if the listing is French).
 - summary: one plain sentence on what this is and whether it looks underpriced.
@@ -166,19 +169,22 @@ export async function value(cfg, l, ident) {
   const bulk = Math.max(0, (ident.totalCardCount || 0) - counted) * m.bulkCadPerCard;
   resale += bulk;
 
-  const tax = l.source === 'ebay' ? (l.priceCad + (l.shippingCad || 0)) * m.buyerTaxOnline : 0;
-  const cost = l.priceCad + (l.shippingCad || 0) + tax;
+  // A $1 "placeholder" price is not the real price; use what the seller actually asks.
+  const price = ident.realAskingPriceCad ?? l.priceCad;
+  const placeholder = ident.realAskingPriceCad == null && l.priceCad <= 2 && l.source !== 'ebay';
+  const tax = l.source === 'ebay' ? (price + (l.shippingCad || 0)) * m.buyerTaxOnline : 0;
+  const cost = price + (l.shippingCad || 0) + tax;
   const profit = resale - cost;
   const roi = cost > 0 ? profit / cost : 0;
   const marketTotal = lines.reduce((a, x) => a + x.marketCad, 0);
 
   let tier = 'pass';
   const { steal, good } = cfg.deal;
-  if (ident.fakeRisk !== 'high' && ident.isPokemonCards) {
+  if (ident.fakeRisk !== 'high' && ident.isPokemonCards && !placeholder) {
     if (profit >= steal.minProfitCad && roi >= steal.minRoi) tier = 'steal';
     else if (profit >= good.minProfitCad && roi >= good.minRoi) tier = 'good';
   }
-  return { tier, cost, resale, profit, roi, marketTotal, bulk, lines };
+  return { tier, price, cost, resale, profit, roi, marketTotal, bulk, lines };
 }
 
 export async function judge(cfg, l) {

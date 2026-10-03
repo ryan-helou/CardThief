@@ -26,7 +26,7 @@ export function toDeal(l, r) {
     location: l.location,
     postedAt: l.postedAt,
     foundAt: new Date().toISOString(),
-    price: l.priceCad,
+    price: r.price ?? l.priceCad,
     shipping: l.shippingCad || 0,
     cost: +r.cost.toFixed(2),
     resale: +r.resale.toFixed(2),

@@ -11,6 +11,8 @@ export function prefilter(cfg, l) {
   const fb = l.source === 'facebook';
   if (!fb && !/pok[eé]mon|pokemon/.test(text)) return 'not pokemon';
   if (new RegExp(cfg.titleExclude, 'i').test(l.title)) return 'excluded item type';
+  if (/\b(vendu|sold|r[ée]serv[ée]|pending)\b/i.test(l.title)) return 'already sold';
+  if (/\b(recherche|cherche|wanted|looking for|j'ach[eè]te|achat|buying|besoin d)/i.test(l.title)) return 'wanted/buyer post';
   if (!fb && !new RegExp(cfg.titleMustMatch, 'i').test(text)) return 'no card keywords';
   if (l.priceCad == null) return l.priceType === 'CONTACT' ? 'no price (contact)' : 'no price';
   if (l.priceCad <= 0) return 'free/zero price';

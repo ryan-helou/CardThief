@@ -29,6 +29,8 @@ export interface Deal {
   summary?: string;
   hiddenUpside?: string;
   askSeller?: string;
+  offer?: number;
+  draft?: string; // opener the bot can send for Ryan
   bids?: number | null;
   endsAt?: string | null;
   seller?: string;
@@ -36,8 +38,16 @@ export interface Deal {
 
 export type Status = "new" | "bought" | "sold" | "passed";
 
+export interface Message {
+  text: string;
+  state: "queued" | "sent" | "failed";
+  at: string;
+  error?: string;
+}
+
 export interface DealRow {
   deal: Deal;
+  message: Message | null;
   status: Status;
   boughtFor: number | null;
   soldFor: number | null;

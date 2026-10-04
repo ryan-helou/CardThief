@@ -7,6 +7,8 @@ import { sweepFacebook, facebookDetail, inActiveHours } from './sources/facebook
 import { prefilter, judge } from './judge.mjs';
 import { toDeal, sendDeal, heartbeat } from './notify.mjs';
 import { getFx } from './price.mjs';
+import { distanceKm } from './geo.mjs';
+import { processOutbox } from './outbox.mjs';
 
 const ONCE = process.argv.includes('--once');
 const seen = new Seen('seen');
@@ -20,8 +22,14 @@ const stats = { day: today(), judged: 0, deals: 0, kijiji: null, ebay: null, fac
 const judgedAt = [];
 let judgePausedUntil = 0;
 
-function enqueue(cfg, l) {
+async function enqueue(cfg, l) {
   if (seen.has(l.id) || queue.some(q => q.id === l.id)) return;
+  // Local pickup only: drop listings too far to drive to (eBay ships, so it's exempt).
+  if (l.source !== 'ebay' && cfg.maxDistanceKm) {
+    const d = await distanceKm(l.location);
+    if (d != null) l.distanceKm = d;
+    if (d != null && d > cfg.maxDistanceKm) { seen.add(l.id); appendJsonl('skipped', { at: new Date().toISOString(), id: l.id, title: l.title, price: l.priceCad, why: `${d} km away` }); return; }
+  }
   const age = Date.now() - new Date(l.postedAt).getTime();
   if (age > cfg.firstRunLookbackHours * 3600e3) { seen.add(l.id); return; } // old or bumped ad
   const why = prefilter(cfg, l);
@@ -33,7 +41,7 @@ async function pollKijiji(cfg) {
   for (const url of cfg.kijiji.searches) {
     try {
       const list = await searchKijiji(url);
-      list.forEach(l => enqueue(cfg, l));
+      for (const l of list) await enqueue(cfg, l);
       stats.kijiji = new Date().toISOString();
     } catch (e) { log('kijiji search failed', e.message); stats.lastError = `kijiji: ${e.message}`; }
     await sleep(jitter(4000));
@@ -49,7 +57,7 @@ async function pollEbay(cfg) {
     const started = new Date();
     try {
       const list = await searchEbay(cfg, q, since, fx);
-      list.forEach(l => enqueue(cfg, l));
+      for (const l of list) await enqueue(cfg, l);
       stats.ebay = new Date().toISOString();
       state[key] = new Date(started.getTime() - 5 * 60e3).toISOString(); // small overlap; seen-set dedupes
     } catch (e) { log('ebay search failed', q.q, e.message); }
@@ -60,7 +68,7 @@ async function pollEbay(cfg) {
 async function pollFacebook(cfg) {
   try {
     const list = await sweepFacebook(cfg);
-    list.forEach(l => enqueue(cfg, l));
+    for (const l of list) await enqueue(cfg, l);
     stats.facebook = new Date().toISOString();
     log(`facebook sweep: ${list.length} listings, queue ${queue.length}`);
   } catch (e) { log('facebook sweep failed', e.message); stats.lastError = `facebook: ${e.message}`.slice(0, 200); }
@@ -69,6 +77,7 @@ async function pollFacebook(cfg) {
 async function drain(cfg) {
   if (Date.now() < judgePausedUntil) return;
   while (queue.length) {
+    await processOutbox();
     const hourAgo = Date.now() - 3600e3;
     while (judgedAt.length && judgedAt[0] < hourAgo) judgedAt.shift();
     if (judgedAt.length >= cfg.maxJudgementsPerHour) { log(`judge budget hit, ${queue.length} waiting`); return; }
@@ -122,6 +131,7 @@ async function main() {
     if (stats.day !== today()) Object.assign(stats, { day: today(), judged: 0, deals: 0 });
     const beat = () => heartbeat({ kijiji: stats.kijiji, facebook: c.facebook?.enabled ? stats.facebook : null, ebay: ebayReady(c) ? stats.ebay : null, queue: queue.length, judgedToday: stats.judged, dealsToday: stats.deals, lastError: stats.lastError });
     await beat();
+    await processOutbox();
     await drain(c);
     await beat();
     if (ONCE) break;

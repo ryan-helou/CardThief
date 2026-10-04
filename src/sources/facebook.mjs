@@ -126,3 +126,47 @@ export async function facebookDetail(cfg, listing) {
     await ctx.close();
   }
 }
+
+// Sends one message to a listing's seller. Only ever called for a message Ryan tapped
+// Send on in the app. dryRun types the text but stops before sending (for testing).
+export async function sendFacebookMessage(cfg, url, text, { dryRun = false, shot = null } = {}) {
+  const ctx = await openBrowser({ headless: cfg.facebook.headless });
+  const page = ctx.pages()[0] || (await ctx.newPage());
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+    await sleep(jitter(4000));
+    if (await loggedOut(page)) throw new Error('facebook: logged out — run `npm run fb-login`');
+    const main = page.locator('[role="main"]');
+    if (await main.getByText(/^(Sold|Vendu|Pending|En attente)$/).count()) throw new Error('listing is sold or pending');
+
+    // Either an inline "Send seller a message" box, or a Message button that opens a chat.
+    if (await page.getByText(/listing isn.t available anymore|annonce n.est plus disponible/i).count()) throw new Error('listing is gone');
+    let box = main.locator('textarea:visible').first();
+    if (!(await box.isVisible().catch(() => false))) {
+      await main.getByRole('button', { name: /^(Message|Envoyer un message|Contacter)$/i }).first().click({ timeout: 8000 });
+      await sleep(jitter(2500));
+      box = page.locator('[role="dialog"] textarea, [role="dialog"] [contenteditable="true"][role="textbox"], [aria-label*="Message"][contenteditable="true"]').last();
+    }
+    await box.click({ timeout: 8000 });
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.type(text, { delay: 35 + Math.random() * 40 });
+    await sleep(jitter(1200));
+    if (shot) await page.screenshot({ path: shot });
+    if (dryRun) return { ok: true, dryRun: true };
+
+    // Inline box: "Send message to <seller>"; chat dialog: "Send"/"Press enter to send".
+    const send = (await box.evaluate(b => !!b.closest('[role="dialog"]')).catch(() => false))
+      ? page.locator('[role="dialog"]').getByRole('button', { name: /^(Send|Envoyer|Press enter to send|Appuyez sur Entrée)/i }).last()
+      : main.getByRole('button', { name: /^(Send message to|Envoyer un message à|Envoyer le message)/i }).first();
+    if (await send.isVisible().catch(() => false)) await send.click();
+    else await page.keyboard.press('Enter');
+    await sleep(jitter(3500));
+    // Sent once the text appears in the conversation and the box no longer holds it.
+    const stillTyped = (await box.innerText().catch(() => box.inputValue().catch(() => ''))).includes(text.slice(0, 20));
+    if (stillTyped) throw new Error('message did not send (still in the box)');
+    return { ok: true };
+  } finally {
+    await ctx.close();
+  }
+}

@@ -64,7 +64,7 @@ function DealCard({ r }: { r: DealRow }) {
         )}
         <div className="min-w-0 flex-1">
           <p className="flex items-baseline justify-between gap-2 text-xs">
-            <span className={`font-semibold ${steal ? "text-[var(--steal)]" : "text-[var(--good)]"}`}>
+            <span className={`shrink-0 whitespace-nowrap font-semibold ${steal ? "text-[var(--steal)]" : "text-[var(--good)]"}`}>
               {steal ? "Steal" : "Deal"} +{money(d.profit)}
             </span>
             <span className="truncate text-[var(--ink-3)]">

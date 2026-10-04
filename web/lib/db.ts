@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import type { Deal, DealRow, Heartbeat, Status } from "./types";
+import type { Deal, DealRow, Heartbeat, Message, Status } from "./types";
 
 // Three tables: deals (one row per alerted listing, plus what Ryan did with it),
 // the bot's heartbeat, and push subscriptions.
@@ -24,6 +24,7 @@ function db(): Pool {
            sold_for numeric,
            created_at timestamptz NOT NULL DEFAULT now(),
            updated_at timestamptz NOT NULL DEFAULT now());
+         ALTER TABLE deals ADD COLUMN IF NOT EXISTS message jsonb;
          CREATE TABLE IF NOT EXISTS heartbeat (id int PRIMARY KEY, data jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
          CREATE TABLE IF NOT EXISTS push_subs (endpoint text PRIMARY KEY, keys jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());`,
       )
@@ -49,9 +50,10 @@ export async function upsertDeal(d: Deal): Promise<boolean> {
   return rows[0]?.inserted ?? false;
 }
 
-type Raw = { data: Deal; status: Status; bought_for: string | null; sold_for: string | null; updated_at: Date };
+type Raw = { data: Deal; message: Message | null; status: Status; bought_for: string | null; sold_for: string | null; updated_at: Date };
 const toRow = (r: Raw): DealRow => ({
   deal: r.data,
+  message: r.message,
   status: r.status,
   boughtFor: r.bought_for == null ? null : Number(r.bought_for),
   soldFor: r.sold_for == null ? null : Number(r.sold_for),
@@ -59,7 +61,7 @@ const toRow = (r: Raw): DealRow => ({
 });
 
 export async function listDeals(): Promise<DealRow[]> {
-  const rows = await q<Raw>("SELECT data, status, bought_for, sold_for, updated_at FROM deals ORDER BY created_at DESC LIMIT 300");
+  const rows = await q<Raw>("SELECT data, message, status, bought_for, sold_for, updated_at FROM deals ORDER BY created_at DESC LIMIT 300");
   return rows.map(toRow);
 }
 
@@ -108,4 +110,22 @@ export async function removeSub(endpoint: string): Promise<void> {
 
 export async function deleteDeal(id: string): Promise<void> {
   await q("DELETE FROM deals WHERE id = $1", [id]);
+}
+
+export async function queueMessage(id: string, text: string) {
+  const m: Message = { text, state: "queued", at: new Date().toISOString() };
+  await q("UPDATE deals SET message = $2, updated_at = now() WHERE id = $1", [id, JSON.stringify(m)]);
+}
+
+export async function outbox(): Promise<{ id: string; url: string; text: string }[]> {
+  return q(
+    "SELECT id, data->>'url' AS url, message->>'text' AS text FROM deals WHERE message->>'state' = 'queued' ORDER BY updated_at",
+  );
+}
+
+export async function setMessageResult(id: string, state: "sent" | "failed", error?: string) {
+  await q(
+    `UPDATE deals SET message = message || jsonb_build_object('state', $2::text, 'at', now(), 'error', $3::text), updated_at = now() WHERE id = $1`,
+    [id, state, error ?? null],
+  );
 }

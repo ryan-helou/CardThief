@@ -16,6 +16,19 @@ async function app(path, body) {
   return res.json();
 }
 
+// Short opener, per Ryan's BikeHunt rule: "still available?" plus one thing. French unless the ad is in English.
+export function draftMessage(l, r) {
+  const text = `${l.title} ${l.description || ''}`;
+  const fr = (text.match(/\b(cartes?|le|la|les|des|et|avec|pour|tr[eè]s|vendre|à)\b/gi) || []).length >= (text.match(/\b(cards?|the|and|with|for|very|sell|selling)\b/gi) || []).length;
+  const lowball = r.offer < (r.price ?? l.priceCad);
+  if (fr) return lowball
+    ? `Bonjour! Toujours disponible? Je peux passer aujourd'hui avec ${r.offer}$ comptant, ça vous irait?`
+    : `Bonjour! Toujours disponible? Je peux passer aujourd'hui, à quelle heure ça vous irait?`;
+  return lowball
+    ? `Hi! Is this still available? I can pick it up today for $${r.offer} cash, would that work?`
+    : `Hi! Is this still available? I can pick it up today, what time works for you?`;
+}
+
 export function toDeal(l, r) {
   return {
     id: l.id,
@@ -23,7 +36,7 @@ export function toDeal(l, r) {
     url: l.url,
     title: l.title,
     photo: l.images?.[0],
-    location: l.location,
+    location: l.distanceKm != null ? `${l.location} · ${l.distanceKm} km` : l.location,
     postedAt: l.postedAt,
     foundAt: new Date().toISOString(),
     price: r.price ?? l.priceCad,
@@ -40,6 +53,8 @@ export function toDeal(l, r) {
     summary: r.ident.summary,
     hiddenUpside: r.ident.hiddenUpside || '',
     askSeller: r.ident.askSeller || '',
+    offer: r.offer,
+    draft: l.source === 'ebay' ? '' : draftMessage(l, r),
     bids: l.bids ?? null,
     endsAt: l.endsAt ?? null,
     seller: l.seller || '',

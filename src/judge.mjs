@@ -180,11 +180,14 @@ export async function value(cfg, l, ident) {
 
   let tier = 'pass';
   const { steal, good } = cfg.deal;
-  if (ident.fakeRisk !== 'high' && ident.isPokemonCards && !placeholder) {
+    if (ident.fakeRisk !== 'high' && ident.isPokemonCards && !placeholder) {
     if (profit >= steal.minProfitCad && roi >= steal.minRoi) tier = 'steal';
     else if (profit >= good.minProfitCad && roi >= good.minRoi) tier = 'good';
   }
-  return { tier, price, cost, resale, profit, roi, marketTotal, bulk, lines };
+  // Offer: the price at which this would be a steal, rounded down to $5, never above asking.
+  const stealPrice = (resale - (l.shippingCad || 0)) / (1 + steal.minRoi);
+  const offer = Math.max(5, Math.min(price, Math.floor(stealPrice / 5) * 5));
+  return { tier, price, cost, resale, profit, roi, marketTotal, bulk, lines, offer };
 }
 
 export async function judge(cfg, l) {

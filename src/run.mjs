@@ -74,10 +74,14 @@ async function pollFacebook(cfg) {
   } catch (e) { log('facebook sweep failed', e.message); stats.lastError = `facebook: ${e.message}`.slice(0, 200); }
 }
 
+// Check in with the app; the app calls the bot "quiet" after 15 minutes without one.
+const beat = c => heartbeat({ kijiji: stats.kijiji, facebook: c.facebook?.enabled ? stats.facebook : null, ebay: ebayReady(c) ? stats.ebay : null, queue: queue.length, judgedToday: stats.judged, dealsToday: stats.deals, lastError: stats.lastError });
+
 async function drain(cfg) {
   if (Date.now() < judgePausedUntil) return;
   while (queue.length) {
     await processOutbox();
+    await beat(cfg);
     const hourAgo = Date.now() - 3600e3;
     while (judgedAt.length && judgedAt[0] < hourAgo) judgedAt.shift();
     if (judgedAt.length >= cfg.maxJudgementsPerHour) { log(`judge budget hit, ${queue.length} waiting`); return; }
@@ -129,11 +133,10 @@ async function main() {
     if (c.facebook?.enabled && now >= nextFacebook && inActiveHours(c)) { await pollFacebook(c); nextFacebook = now + jitter(c.facebook.everyMinutes * 60e3, 0.3); }
     seen.save();
     if (stats.day !== today()) Object.assign(stats, { day: today(), judged: 0, deals: 0 });
-    const beat = () => heartbeat({ kijiji: stats.kijiji, facebook: c.facebook?.enabled ? stats.facebook : null, ebay: ebayReady(c) ? stats.ebay : null, queue: queue.length, judgedToday: stats.judged, dealsToday: stats.deals, lastError: stats.lastError });
-    await beat();
+    await beat(c);
     await processOutbox();
     await drain(c);
-    await beat();
+    await beat(c);
     if (ONCE) break;
     await sleep(20_000);
   }

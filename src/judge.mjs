@@ -54,12 +54,14 @@ const SCHEMA = {
       items: { type: 'object', properties: { product: { type: 'string' }, estUsd: { type: ['number', 'null'] }, quantity: { type: 'integer' } }, required: ['product', 'estUsd', 'quantity'] },
     },
     realAskingPriceCad: { type: ['number', 'null'] },
+    priceScope: { type: 'string', enum: ['whole_listing', 'per_item', 'catalog'] },
+    verdict: { type: 'string', enum: ['underpriced', 'fair', 'overpriced', 'unclear'] },
     hiddenUpside: { type: 'string' },
     askSeller: { type: 'string' },
     confidence: { type: 'number' },
     summary: { type: 'string' },
   },
-  required: ['isPokemonCards', 'kind', 'language', 'fakeRisk', 'cards', 'sealed', 'confidence', 'summary', 'totalCardCount', 'realAskingPriceCad'],
+  required: ['isPokemonCards', 'kind', 'language', 'fakeRisk', 'cards', 'sealed', 'confidence', 'summary', 'totalCardCount', 'realAskingPriceCad', 'priceScope', 'verdict'],
 };
 
 const PROMPT = l => `You are valuing a second-hand listing for a Pokémon card flipper in Montréal. He buys underpriced cards and resells them on eBay.
@@ -79,6 +81,8 @@ Return:
 - sealed: sealed products with estUsd each.
 - fakeRisk: high for proxies/"custom"/"orica"/metal/gold-foil novelty cards, fake-looking fonts/colours, or prices far too good to be true.
 - realAskingPriceCad: Facebook/Kijiji sellers often list at $1 or $0 as a placeholder. If the listed price looks like a placeholder or differs from the real asking price stated in the description or photos, give the real total asking price in CAD (if it's per card, multiply out for the whole listing). If the stated price is real, return null.
+- priceScope: "whole_listing" if the price buys everything shown; "per_item" if it's a price for each item ("40$ each", "5$ chaque"); "catalog" for shop/catalog posts where items are priced individually or by "market value" and no single price buys the lot.
+- verdict: your honest call, comparing what the buyer would pay against what the cards resell for: "underpriced" only if he'd clearly make money flipping it.
 - hiddenUpside: what valuable cards might plausibly be in the parts not photographed (one sentence, or "").
 - askSeller: the one question/photo request that would most change the value (in French if the listing is French).
 - summary: one plain sentence on what this is and whether it looks underpriced.
@@ -150,6 +154,8 @@ export async function value(cfg, l, ident) {
       const p = await priceCard(c);
       if (p) { market = p.cad; basis = p.basis + (p.ambiguous ? ' (cheapest match)' : ''); }
     }
+    // A name+number match without a confirmed set can land on a pricier printing; trust the lower figure.
+    if (market != null && c.estUsd && market > 3 * c.estUsd * fx.USD) { market = c.estUsd * fx.USD; basis = 'Claude estimate (catalog match looked wrong)'; }
     if (market == null && c.estUsd) { market = c.estUsd * fx.USD; basis = 'Claude estimate'; }
     if (market == null) continue;
     const condFactor = c.grade ? 1 : { NM: 1, LP: 0.8, MP: 0.6, HP: 0.4, DMG: 0.25, unknown: m.rawConditionHaircut }[c.condition] ?? m.rawConditionHaircut;
@@ -166,8 +172,14 @@ export async function value(cfg, l, ident) {
     resale += Math.max(0, net);
     lines.push({ label: `${qty > 1 ? qty + '× ' : ''}${s.product}`, marketCad: +(cad * qty).toFixed(2), netCad: +net.toFixed(2), basis: 'Claude estimate (sealed)' });
   }
-  const bulk = Math.max(0, (ident.totalCardCount || 0) - counted) * m.bulkCadPerCard;
+  let bulk = Math.max(0, (ident.totalCardCount || 0) - counted) * m.bulkCadPerCard;
   resale += bulk;
+  if (ident.priceScope === 'per_item') {
+    // "$40 each": the price buys one unit, so value the best single unit, not the whole pile.
+    const units = [...ident.cards, ...(ident.sealed || [])].length ? lines.map(x => x.netCad / Math.max(1, Number((x.label.match(/^(\d+)×/) || [])[1] || 1))) : [];
+    resale = Math.max(0, ...units);
+    bulk = 0;
+  }
 
   // A $1 "placeholder" price is not the real price; use what the seller actually asks.
   const price = ident.realAskingPriceCad ?? l.priceCad;
@@ -180,7 +192,7 @@ export async function value(cfg, l, ident) {
 
   let tier = 'pass';
   const { steal, good } = cfg.deal;
-    if (ident.fakeRisk !== 'high' && ident.isPokemonCards && !placeholder) {
+    if (ident.fakeRisk !== 'high' && ident.isPokemonCards && !placeholder && ident.priceScope !== 'catalog' && ident.verdict === 'underpriced') {
     if (profit >= steal.minProfitCad && roi >= steal.minRoi) tier = 'steal';
     else if (profit >= good.minProfitCad && roi >= good.minRoi) tier = 'good';
   }

@@ -66,7 +66,8 @@ export async function sweepFacebook(cfg) {
         if (found.has(t.id)) continue;
         const priceLine = t.lines.find(s => /\$|gratuit|free/i.test(s)) || t.lines[0];
         // Drop badges ("Just listed") and struck-through old prices ("CA$110").
-        const rest = t.lines.filter(s => s !== priceLine && !/^(CA)?\$|^\d[\d\s,.]*\s?\$$|^just listed$|^nouveau|^vient d/i.test(s));
+        const rest = t.lines.filter(s => s !== priceLine && !/^(CA)?\$|^\d[\d\s,.]*\s?\$$|^just listed$|^nouveau|^vient d|^pending$|^en attente$|^·$/i.test(s));
+        if (t.lines.some(s => /^(pending|en attente|sold|vendu)$/i.test(s))) continue;
         found.set(t.id, {
           source: 'facebook',
           id: `facebook:${t.id}`,

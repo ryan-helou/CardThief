@@ -60,7 +60,7 @@ export function DealControls({
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              rows={2}
+              rows={3}
               disabled={queued || busy}
               className="min-w-0 flex-1 resize-none rounded-lg border border-[var(--rule)] bg-[var(--surface-2)] px-2.5 py-1.5 text-sm"
             />

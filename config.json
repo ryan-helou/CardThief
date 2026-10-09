@@ -1,6 +1,6 @@
 {
   "kijiji": {
-    "enabled": true,
+    "enabled": false,
     "everyMinutes": 4,
     "searches": [
       "https://www.kijiji.ca/b-grand-montreal/pokemon/k0l80002?sort=dateDesc",
@@ -27,7 +27,7 @@
     ]
   },
   "facebook": {
-    "enabled": true,
+    "enabled": false,
     "everyMinutes": 25,
     "activeHours": [
       8,

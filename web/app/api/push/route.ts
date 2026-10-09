@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   }
   const sub = { endpoint: b.endpoint, keys: { p256dh: b.keys.p256dh, auth: b.keys.auth } };
   await saveSub(sub);
-  const test = await sendPush({ title: "CardThief is on", body: "Card deals will show up here.", tag: "cardthief-test" }, sub);
+  const test = await sendPush({ title: "Mint is on", body: "Card deals will show up here.", tag: "cardthief-test" }, sub);
   return Response.json({ ok: true, test });
 }
 

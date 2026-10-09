@@ -1,5 +1,5 @@
 // Network-first with a cached fallback, plus Web Push. Bump BUILD on every deploy.
-const BUILD = "cardthief-v2";
+const BUILD = "mint-v3";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => {
@@ -31,7 +31,7 @@ self.addEventListener("push", (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { title: e.data?.text() }; }
   e.waitUntil(
-    self.registration.showNotification(d.title || "CardThief", {
+    self.registration.showNotification(d.title || "Mint", {
       body: d.body || "",
       tag: d.tag || "cardthief",
       icon: "/icons/icon-192.png",

@@ -133,7 +133,7 @@ export default async function Home() {
   return (
     <main className="mx-auto max-w-xl px-4 pb-16 pt-[max(1.25rem,env(safe-area-inset-top))]">
       <header className="mb-4 space-y-1.5">
-        <h1 className="text-xl font-semibold">CardThief</h1>
+        <h1 className="text-xl font-semibold">Mint</h1>
         <Status hb={hb} />
         <Tally rows={rows} />
         <PushButton />

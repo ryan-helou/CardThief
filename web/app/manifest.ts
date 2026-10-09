@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "CardThief",
-    short_name: "CardThief",
+    name: "Mint",
+    short_name: "Mint",
     description: "Underpriced Pokémon cards on Marketplace, Kijiji and eBay, found and priced around the clock.",
     start_url: "/",
     scope: "/",

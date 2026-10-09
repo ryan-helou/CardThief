@@ -59,7 +59,7 @@ export function PushButton() {
   if (state === "install-first") {
     return (
       <p className="rounded-xl bg-[var(--warn-bg)] px-4 py-3 text-sm text-[var(--warn)]">
-        To get alerts, tap Share, then Add to Home Screen, and open CardThief from there.
+        To get alerts, tap Share, then Add to Home Screen, and open Mint from there.
       </p>
     );
   }

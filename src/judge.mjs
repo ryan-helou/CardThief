@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { DATA, UA, log } from './util.mjs';
 import { priceCard, getFx } from './price.mjs';
+import { pptPrice, pptAvailable } from './ppt.mjs';
+import { ROOT } from './util.mjs';
 
 // ---------- 1. Free prefilter: drop anything that obviously isn't Pokémon cards ----------
 export function prefilter(cfg, l) {
@@ -17,11 +19,60 @@ export function prefilter(cfg, l) {
   if (!fb && !new RegExp(cfg.titleMustMatch, 'i').test(text)) return 'no card keywords';
   if (l.priceCad == null) return l.priceType === 'CONTACT' ? 'no price (contact)' : 'no price';
   if (l.priceCad <= 0) return 'free/zero price';
+  if (l.priceCad < (cfg.minPriceCad ?? 20)) return `under C$${cfg.minPriceCad ?? 20} ($${l.priceCad})`;
   if (l.priceCad > cfg.maxBuyCad) return `over max buy ($${l.priceCad})`;
+  // eBay from outside Canada: only lots survive the 20–35% cross-border costs.
+  if (l.source === 'ebay' && l.country !== 'CA' && !isLot(l.title)) return 'foreign eBay single';
   return null;
 }
 
-// ---------- 2. Claude reads the listing + photos and lists what's in it ----------
+const isLot = t => /\b(lot|bundle|collection|binder|classeur|cartable|bulk|vrac|cartes?\s+pok|\d{2,}\s*(cards|cartes|pcs))\b/i.test(t);
+const isSealed = t => /\b(etb|elite trainer|booster box|booster bundle|display|tin|blister|scell[ée]|sealed|neuf)\b/i.test(t);
+
+// ---------- Stage 1: identify a single card from the title, no AI ----------
+const NOISE = /\b(pok[eé]mon|tcg|card|carte|cards|cartes|holo|reverse|rare|ultra|secret|full art|alt art|sir|sar|ir|near mint|nm|lp|mint|english|anglais|fr|en|psa|cgc|bgs|sgc|tag|ace|graded|slab|the|de|du|la|le|\d{4})\b/gi;
+export function parseTitle(t) {
+  const grade = t.match(/\b(PSA|CGC|BGS|SGC|TAG|ACE)\s*-?\s*(10|9\.5|9|8\.5|8|7\.5|7|6|5)\b/i);
+  const num = t.match(/\b(\d{1,3})\s*\/\s*(\d{2,3})\b/) || t.match(/\b((?:SV|SWSH|SM|XY|BW)P?\s?-?\d{2,3})\b/i);
+  const lang = /japan|japon|\bjp\b|jpn/i.test(t) ? 'jp' : /\bfr\b|fran[cç]ais|french/i.test(t) ? 'fr' : 'en';
+  let name = null;
+  if (num) {
+    const before = t.slice(0, num.index).replace(NOISE, ' ').replace(/[^\p{L}\s'&.-]/gu, ' ').replace(/\s+/g, ' ').trim();
+    name = before.split(' ').slice(-3).join(' ') || null; // card names sit right before the number
+  }
+  const variant = /1st\s*ed|1[eè]re\s*[ée]d|first edition/i.test(t) ? '1st' : /reverse/i.test(t) ? 'reverse' : 'unknown';
+  return { variant, name, number: num ? (num[2] ? `${num[1]}/${num[2]}` : num[1]) : null, setTotal: num?.[2] ? Number(num[2]) : null, grade: grade ? `${grade[1].toUpperCase()} ${grade[2]}` : null, language: lang };
+}
+
+async function stage1(cfg, l) {
+  if (isLot(l.title) || isSealed(l.title)) return null;
+  const p = parseTitle(l.title);
+  if (!p.name || !p.number || p.language !== 'en') return null; // the free catalog is English-only
+  // Try the last 3, 2, then 1 words before the number as the card name.
+  const words = p.name.split(' ');
+  for (let k = Math.min(3, words.length); k >= 1; k--) {
+    const card = { name: words.slice(-k).join(' '), number: p.number, setTotal: p.setTotal, grade: p.grade, variant: p.variant, condition: 'unknown', estUsd: null, quantity: 1 };
+    const ident = { isPokemonCards: true, kind: p.grade ? 'graded' : 'single', language: p.language, fakeRisk: 'low', cards: [card], sealed: [], totalCardCount: 1, realAskingPriceCad: null, priceScope: 'whole_listing', verdict: 'underpriced', summary: `Priced from the title: ${card.name} ${card.number}${card.grade ? ' ' + card.grade : ''}.` };
+    const v = await value(cfg, l, ident, { pptOk: Boolean(p.grade), strict: true });
+    if (v.lines.length) return { ident, ...v };
+  }
+  return null;
+}
+
+// ---------- Stage 2: Haiku glance (title + 1 photo) ----------
+const TRIAGE_SCHEMA = {
+  type: 'object',
+  properties: { worthALook: { type: 'boolean' }, roughResaleCad: { type: ['number', 'null'] }, reason: { type: 'string' } },
+  required: ['worthALook', 'roughResaleCad', 'reason'],
+};
+const TRIAGE = (l, cost, img) => `Pokémon card listing near Montréal. Buyer flips on eBay.
+Title: ${l.title}
+All-in cost: C$${cost.toFixed(0)}
+Description: ${(l.description || '').slice(0, 600)}
+${img ? 'Photo attached.' : 'No photo.'}
+Could this plausibly resell for at least 1.3× the all-in cost after eBay fees? Be skeptical: most listings are fairly priced. Give a rough resale value in CAD.`;
+
+// ---------- Stage 3: Claude reads the listing + photos and lists what's in it ----------
 const SCHEMA = {
   type: 'object',
   properties: {
@@ -68,12 +119,12 @@ const PROMPT = l => `You are valuing a second-hand listing for a Pokémon card f
 
 LISTING (${l.source})
 Title: ${l.title}
-Price: ${l.priceCad != null ? `C$${l.priceCad.toFixed(2)}` : 'none'}${l.priceNative ? ` (${l.priceNative})` : ''}${l.shippingCad ? ` + C$${l.shippingCad.toFixed(2)} shipping` : ''}
+Price: ${l.priceCad != null ? `C$${l.priceCad.toFixed(2)}` : 'none'}${l.shippingCad ? ` + C$${l.shippingCad.toFixed(2)} shipping to H7T 2W7${l.shippingEstimated ? ' (estimated)' : ''}` : ''}
 Location: ${l.location || '?'}${l.condition ? `\nCondition: ${l.condition}` : ''}${l.bids != null ? `\nBids: ${l.bids}, ends ${l.endsAt}` : ''}
 Description:
 ${(l.description || '').slice(0, 2500)}
 
-PHOTOS: read every image file in ${l.imgDir} with the Read tool before answering. Study them closely: card names, set symbols, collector numbers (e.g. 199/165), holo vs reverse holo, slabs and their labels, sealed products, condition (whitening, creases, bends).
+PHOTOS: attached below; study every one before answering.${l.hint ? `\nTitle-based estimate to verify: ${l.hint}` : ''}\nFollow your checklist (Stage 3) and return the fields below. All money is CAD except per-card estUsd.
 
 Return:
 - cards: every card worth roughly US$2+ that you can actually see or that the text names specifically. Use the ENGLISH card name (translate French names, e.g. "Dracaufeu" → "Charizard"), the collector number and set total if readable, set name if known. estUsd = your best estimate of its current raw near-mint TCGplayer market price in USD (or the graded price if slabbed, with grade like "PSA 10"). quantity for duplicates. Don't list commons/uncommons individually.
@@ -88,11 +139,11 @@ Return:
 - summary: one plain sentence on what this is and whether it looks underpriced.
 Be conservative: if you can't read a card, don't guess an expensive one.`;
 
-async function downloadImages(l) {
+async function downloadImages(l, max = 4) {
   const dir = path.join(DATA, 'img', l.id.replace(/[^a-z0-9]+/gi, '_'));
   fs.mkdirSync(dir, { recursive: true });
   let n = 0;
-  for (const url of l.images.slice(0, 8)) {
+  for (const url of l.images.slice(0, max)) {
     try {
       const res = await fetch(url, { headers: { 'user-agent': UA } });
       if (!res.ok) continue;
@@ -104,15 +155,29 @@ async function downloadImages(l) {
   return { dir, n };
 }
 
-function runClaude(cfg, prompt, imgDir) {
+// Lean call: our own system prompt and no tools, so each judgement doesn't pay
+// for Claude Code's ~20k-token default setup (measured 2026-10-09: ~21k → ~1.8k tokens).
+const SKILL = path.join(ROOT, '.claude/skills/mint-deal-check/SKILL.md');
+export const aiUsage = { calls: 0, usd: 0 };
+// Photos go inline (base64, downsized with macOS sips), so there is no Read-tool round trip.
+function encodeImages(dir, maxPx) {
+  if (!dir) return [];
+  return fs.readdirSync(dir).sort().map(f => {
+    const src = path.join(dir, f), out = path.join(dir, `small-${f.replace(/\.\w+$/, '')}.jpg`);
+    try { execFileSync('sips', ['-s', 'format', 'jpeg', '-Z', String(maxPx), src, '--out', out], { stdio: 'ignore' }); } catch { return null; }
+    return { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: fs.readFileSync(out).toString('base64') } };
+  }).filter(Boolean);
+}
+
+function runClaude(cfg, prompt, imgDir, { model, schema, system, maxPx = 1024 }) {
   const cwd = path.join(DATA, 'judge');
   fs.mkdirSync(cwd, { recursive: true });
   const args = [
-    '-p', '--model', cfg.judgeModel, '--output-format', 'json',
-    '--json-schema', JSON.stringify(SCHEMA),
-    '--allowedTools', 'Read', '--add-dir', imgDir,
-    '--setting-sources', 'project', '--strict-mcp-config', '--no-session-persistence',
+    '-p', '--model', model, '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose',
+    '--json-schema', JSON.stringify(schema), '--tools', '', '--system-prompt', system,
+    '--setting-sources', 'project', '--strict-mcp-config', '--no-session-persistence', '--disable-slash-commands',
   ];
+  const message = { type: 'user', message: { role: 'user', content: [{ type: 'text', text: prompt }, ...encodeImages(imgDir, maxPx)] } };
   return new Promise((resolve, reject) => {
     // Clean env: when launched from inside a Claude Code session, its host variables would hijack the child's auth.
     const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(CLAUDE|ANTHROPIC_BASE_URL)/.test(k)));
@@ -123,21 +188,19 @@ function runClaude(cfg, prompt, imgDir) {
     p.stderr.on('data', d => (err += d));
     p.on('close', code => {
       clearTimeout(timer);
-      try {
-        const o = JSON.parse(out);
-        if (o.is_error) return reject(new Error(`claude: ${o.result || o.subtype}`));
-        const s = o.structured_output ?? JSON.parse(String(o.result).replace(/^```(json)?|```$/g, '').trim());
-        resolve(s);
-      } catch (e) {
-        reject(new Error(`claude exit ${code}: ${(err || out).slice(0, 300)}`));
-      }
+      const o = out.split('\n').filter(Boolean).map(x => { try { return JSON.parse(x); } catch { return null; } }).find(x => x?.type === 'result');
+      if (!o) return reject(new Error(`claude exit ${code}: ${(err || out).slice(-300)}`));
+      if (o.is_error) return reject(new Error(`claude: ${o.result || o.subtype}`));
+      aiUsage.calls++; aiUsage.usd += o.total_cost_usd || 0;
+      try { resolve(o.structured_output ?? JSON.parse(String(o.result).replace(/^```(json)?|```$/g, '').trim())); }
+      catch { reject(new Error(`claude: no structured output: ${String(o.result).slice(0, 200)}`)); }
     });
-    p.stdin.end(prompt);
+    p.stdin.end(JSON.stringify(message) + '\n');
   });
 }
 
 // ---------- 3. Price what Claude found and work out the flip profit ----------
-export async function value(cfg, l, ident) {
+export async function value(cfg, l, ident, { pptOk = true, strict = false } = {}) {
   const m = cfg.money;
   const fx = await getFx();
   const langFactor = { en: 1, fr: 0.7, jp: 0.8, mixed: 0.85, other: 0.5, unknown: 0.85 }[ident.language] ?? 0.85;
@@ -151,8 +214,13 @@ export async function value(cfg, l, ident) {
     counted += qty;
     let market = null, basis = '';
     if (!c.grade) {
-      const p = await priceCard(c);
+      const p = await priceCard(c, { strict });
       if (p) { market = p.cad; basis = p.basis + (p.ambiguous ? ' (cheapest match)' : ''); }
+    }
+    // Real eBay sold prices for slabs, and for raw cards worth enough to matter (free plan ≈ 40 lookups/day).
+    if (pptOk && (c.grade || (market ?? (c.estUsd || 0) * fx.USD) >= 15)) {
+      const e = await pptPrice(c);
+      if (e) { market = e.usd * fx.USD; basis = e.basis; }
     }
     // A name+number match without a confirmed set can land on a pricier printing; trust the lower figure.
     if (market != null && c.estUsd && market > 3 * c.estUsd * fx.USD) { market = c.estUsd * fx.USD; basis = 'Claude estimate (catalog match looked wrong)'; }
@@ -202,10 +270,51 @@ export async function value(cfg, l, ident) {
   return { tier, price, cost, resale, profit, roi, marketTotal, bulk, lines, offer };
 }
 
+const passResult = (stage, summary, extra = {}) => ({
+  stage, tier: 'pass', price: null, cost: 0, resale: 0, profit: 0, roi: 0, lines: [], bulk: 0, offer: null,
+  ident: { kind: 'unknown', fakeRisk: 'low', summary, askSeller: '', hiddenUpside: '' }, ...extra,
+});
+
+// Cheapest stage that can decide wins. Returns { stage, tier, ... }.
 export async function judge(cfg, l) {
-  const { dir, n } = await downloadImages(l);
-  const ident = await runClaude(cfg, PROMPT({ ...l, imgDir: dir }), dir);
-  const v = await value(cfg, l, ident);
-  fs.rmSync(dir, { recursive: true, force: true });
-  return { ident, ...v, photos: n };
+  const fx = await getFx();
+  const cost0 = l.priceCad + (l.shippingCad || 0) + (l.source === 'ebay' ? (l.priceCad + (l.shippingCad || 0)) * cfg.money.buyerTaxOnline : 0);
+  const { good } = cfg.deal;
+
+  // Stage 1: a clear single card priced straight from its title.
+  const s1 = await stage1(cfg, l);
+  let hint = null;
+  if (s1) {
+    if (s1.profit < good.minProfitCad / 2 || s1.roi < good.minRoi / 2) return { ...s1, stage: 1, tier: 'pass' };
+    hint = `${s1.lines.map(x => `${x.label} ≈ C$${x.marketCad} (${x.basis})`).join('; ')}; title-based profit C$${s1.profit.toFixed(0)}`;
+  } else {
+    // Stage 2: Haiku glances at the title and one photo.
+    const { dir } = await downloadImages(l, 1);
+    const img = fs.readdirSync(dir)[0];
+    const tdir = img ? dir : null;
+    try {
+      const t = await runClaude(cfg, TRIAGE(l, cost0, img), tdir, {
+        model: cfg.triageModel || 'haiku', schema: TRIAGE_SCHEMA, maxPx: 512,
+        system: 'You screen second-hand Pokémon card listings for a reseller. Answer briefly and skeptically.',
+      });
+      if (!t.worthALook || (t.roughResaleCad != null && t.roughResaleCad < cost0 * 1.3)) {
+        return passResult(2, t.reason, { cost: cost0, resale: t.roughResaleCad || 0, profit: (t.roughResaleCad || 0) - cost0 });
+      }
+      hint = `quick look guessed resale ≈ C$${t.roughResaleCad} (${t.reason})`;
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  // Stage 3: Sonnet reads up to 4 photos, following the mint-deal-check checklist.
+  const { dir, n } = await downloadImages(l, 4);
+  try {
+    const ident = await runClaude(cfg, PROMPT({ ...l, hint }), n ? dir : null, {
+      model: cfg.judgeModel, schema: SCHEMA, system: fs.readFileSync(SKILL, 'utf8'), maxPx: 1024,
+    });
+    const v = await value(cfg, l, ident);
+    return { stage: 3, ident, ...v, photos: n };
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }

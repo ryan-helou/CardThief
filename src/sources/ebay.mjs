@@ -41,11 +41,15 @@ export async function searchEbay(cfg, query, since, fx) {
     headers: {
       authorization: `Bearer ${t}`,
       'X-EBAY-C-MARKETPLACE-ID': cfg.ebay.marketplace,
-      'X-EBAY-C-ENDUSERCTX': 'contextualLocation=country=CA,zip=H7T2W7',
+      // Prices shipping to Ryan's door; eBay wants the value URL-encoded.
+      'X-EBAY-C-ENDUSERCTX': `contextualLocation=${encodeURIComponent('country=CA,zip=H7T2W7')}`,
     },
   });
   return (res.itemSummaries || []).map(it => {
     const ship = it.shippingOptions?.[0]?.shippingCost;
+    const fromCanada = it.itemLocation?.country === 'CA';
+    // Unknown (calculated) shipping: assume a typical tracked card parcel, and say so.
+    const shipCad = ship ? toCad(ship.value, ship.currency, fx) : null;
     return {
       source: 'ebay',
       id: `ebay:${it.legacyItemId || it.itemId}`,
@@ -55,11 +59,13 @@ export async function searchEbay(cfg, query, since, fx) {
       description: it.shortDescription || '',
       priceCad: toCad(it.price?.value, it.price?.currency, fx),
       priceNative: it.price ? `${it.price.value} ${it.price.currency}` : null,
-      shippingCad: ship ? toCad(ship.value, ship.currency, fx) : null,
+      shippingCad: shipCad ?? (fromCanada ? 15 : 30),
+      shippingEstimated: shipCad == null,
       buyingOptions: it.buyingOptions || [],
       bids: it.bidCount ?? null,
       endsAt: it.itemEndDate || null,
-      location: [it.itemLocation?.city, it.itemLocation?.stateOrProvince, it.itemLocation?.country].filter(Boolean).join(', '),
+      location: [it.itemLocation?.city, it.itemLocation?.stateOrProvince, it.itemLocation?.postalCode, it.itemLocation?.country].filter(Boolean).join(', '),
+      country: it.itemLocation?.country || null,
       seller: it.seller ? `${it.seller.username} (${it.seller.feedbackPercentage}% / ${it.seller.feedbackScore})` : '',
       postedAt: it.itemCreationDate,
       images: [it.image?.imageUrl, ...(it.additionalImages || []).map(i => i.imageUrl)].filter(Boolean),

@@ -5,7 +5,7 @@ import type { Deal } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const money = (n: number) => `$${Math.round(n)}`;
+const money = (n: number) => `C$${Math.round(n)}`;
 
 function valid(d: Partial<Deal>): d is Deal {
   return (
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   if (isNew) {
     const head = d.tier === "steal" ? "🔥 Steal" : "Good deal";
     push = await sendPush({
-      title: `${head} +${money(d.profit)} · ${money(d.price)} ${d.source}`,
+      title: `${head} +${money(d.profit)} · ${money(d.cost)} all-in · ${d.source}`,
       body: d.title.slice(0, 120) + (d.summary ? `\n${d.summary.slice(0, 110)}` : ""),
       tag: d.id,
       url: `/#${encodeURIComponent(d.id)}`,

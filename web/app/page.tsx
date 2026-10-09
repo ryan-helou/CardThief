@@ -6,7 +6,7 @@ import type { DealRow, Heartbeat, Status } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 const money = (n: number | null | undefined) =>
-  n == null ? "—" : `${n < 0 ? "−" : ""}$${Math.abs(Math.round(n)).toLocaleString("en-CA")}`;
+  n == null ? "—" : `${n < 0 ? "−" : ""}C$${Math.abs(Math.round(n)).toLocaleString("en-CA")}`;
 
 function ago(iso?: string | null): string {
   if (!iso) return "never";
@@ -75,7 +75,10 @@ function DealCard({ r }: { r: DealRow }) {
             {d.title}
           </a>
           <p className="mt-0.5 text-sm text-[var(--ink-2)] num">
-            {money(d.price)} → {money(d.resale)} <span className="text-[var(--ink-3)]">· {Math.round(d.roi * 100)}% return</span>
+            {money(d.cost)} all-in → {money(d.resale)}{" "}
+            <span className="text-[var(--ink-3)]">
+              · {Math.round(d.roi * 100)}% · {d.source === "ebay" ? `incl. ${money(d.shipping)} ship to H7T + tax` : "local pickup"}
+            </span>
           </p>
         </div>
       </div>

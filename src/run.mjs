@@ -4,7 +4,7 @@ import { loadConfig, log, sleep, jitter, Seen, appendJsonl, DATA } from './util.
 import { searchKijiji, kijijiDetail } from './sources/kijiji.mjs';
 import { searchEbay, ebayDetail, ebayReady } from './sources/ebay.mjs';
 import { sweepFacebook, facebookDetail, inActiveHours } from './sources/facebook.mjs';
-import { prefilter, judge } from './judge.mjs';
+import { prefilter, judge, aiUsage } from './judge.mjs';
 import { toDeal, sendDeal, heartbeat } from './notify.mjs';
 import { getFx } from './price.mjs';
 import { distanceKm } from './geo.mjs';
@@ -94,11 +94,12 @@ async function drain(cfg) {
       if (l.source === 'ebay') l = await ebayDetail(cfg, l, await getFx());
       if (l.source === 'facebook') l = await facebookDetail(cfg, l);
       const r = await judge(cfg, l);
+      if (r.stage === 1) judgedAt.pop(); // priced from the title: no AI used, doesn't count toward the hourly cap
       seen.add(l.id); seen.save();
       stats.judged++;
-      const rec = { at: new Date().toISOString(), id: l.id, url: l.url, title: l.title, price: l.priceCad, tier: r.tier, profit: +r.profit.toFixed(2), roi: +r.roi.toFixed(2), resale: +r.resale.toFixed(2), kind: r.ident.kind, fakeRisk: r.ident.fakeRisk, lines: r.lines, summary: r.ident.summary, askSeller: r.ident.askSeller };
+      const rec = { at: new Date().toISOString(), stage: r.stage, aiCalls: aiUsage.calls, aiUsd: +aiUsage.usd.toFixed(4), id: l.id, url: l.url, title: l.title, price: l.priceCad, tier: r.tier, profit: +r.profit.toFixed(2), roi: +r.roi.toFixed(2), resale: +r.resale.toFixed(2), kind: r.ident.kind, fakeRisk: r.ident.fakeRisk, lines: r.lines, summary: r.ident.summary, askSeller: r.ident.askSeller };
       appendJsonl('judged', rec);
-      log(`${r.tier.toUpperCase().padEnd(5)} ${l.id} $${l.priceCad} → profit $${r.profit.toFixed(0)} (${Math.round(r.roi * 100)}%) ${l.title}`);
+      log(`${r.tier.toUpperCase().padEnd(5)} s${r.stage} ${l.id} $${l.priceCad} → profit $${r.profit.toFixed(0)} (${Math.round(r.roi * 100)}%) ${l.title}`);
       if (r.tier !== 'pass') {
         appendJsonl('deals', rec);
         stats.deals++;

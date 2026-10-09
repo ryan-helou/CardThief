@@ -63,7 +63,7 @@ function pickPrice(c, variant, rates) {
 }
 
 // { name, number, setName, setTotal, variant } → { id, label, cad, basis } | null
-export async function priceCard(ident) {
+export async function priceCard(ident, { strict = false } = {}) {
   if (!ident?.name) return null;
   const rates = await getFx();
   try {
@@ -80,6 +80,11 @@ export async function priceCard(ident) {
         return { c, s };
       }).sort((a, b) => b.s - a.s);
       if (scored.length) list = [scored[0].c];
+      if (strict && !(scored[0]?.s > 0)) return null; // title pricing must land on the right set
+    }
+    if (strict && ident.setTotal && list.length === 1) {
+      const c = await card(list[0].id).catch(() => null);
+      if (![c?.set?.cardCount?.official, c?.set?.cardCount?.total].includes(Number(ident.setTotal))) return null;
     }
     // Several equally good matches (e.g. a name reprinted many times): take the cheapest, to stay conservative.
     const priced = [];

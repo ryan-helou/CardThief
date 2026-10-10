@@ -151,4 +151,8 @@ async function main() {
   log('done');
 }
 
+// A stray stream error must never take the hunter down; log it and keep going.
+process.on('uncaughtException', e => log('uncaught', e.code || '', e.message));
+process.on('unhandledRejection', e => log('unhandled rejection', e?.message || String(e)));
+
 main().catch(e => { log('fatal', e.stack || e.message); process.exit(1); });

@@ -197,6 +197,9 @@ function runClaude(cfg, prompt, imgDir, { model, schema, system, maxPx = 1024 })
       try { resolve(o.structured_output ?? JSON.parse(String(o.result).replace(/^```(json)?|```$/g, '').trim())); }
       catch { reject(new Error(`claude: no structured output: ${String(o.result).slice(0, 200)}`)); }
     });
+    // If claude exits before reading everything, the write fails with EPIPE; the close handler reports it.
+    p.stdin.on('error', () => {});
+    p.on('error', e => { clearTimeout(timer); reject(e); });
     p.stdin.end(JSON.stringify(message) + '\n');
   });
 }

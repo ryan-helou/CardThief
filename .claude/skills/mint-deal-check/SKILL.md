@@ -11,7 +11,7 @@ Work down the stages. Stop at the first stage that can decide. AI is the last re
 
 ## Stage 0: free filters (code, no AI)
 - [ ] Not judged before (re-judge only if the price dropped).
-- [ ] Listing price is **C$20 or more**, and at most the max buy (C$500).
+- [ ] Listing price at most the max buy (C$500). No minimum price.
 - [ ] Not sold / pending / reserved, not a trade post, not a "wanted / je cherche" post.
 - [ ] Not a $0–2 placeholder price.
 - [ ] Is Pokémon cards (not video games, plush, Funko, figures, puzzles, clothing, LEGO…).
@@ -56,10 +56,10 @@ Read every photo. Then fill in, honestly and conservatively:
 Mint watches eBay **graded Pokémon cards only**: new listings from Canadian sellers, plus auctions ending within the hour (any country except Asia). No AI unless something passes every check.
 - [ ] English slab (Japanese/Korean/Chinese skipped: no sold data yet).
 - [ ] Grader PSA, CGC, BGS, TAG, SGC or ACE, any grade (from the title, else the seller's eBay grade fields). The liquidity check below decides whether a grade sells.
-- [ ] Card identified (name + number, incl. PSA-label titles like "#199 CHARIZARD EX PSA 10").
+- [ ] Card identified from the title (incl. PSA-label titles like "#199 CHARIZARD EX PSA 10"); if the title doesn't say, **Haiku reads the slab label from the photos**.
 - [ ] Free ceiling check: skip if all-in already exceeds 12× the raw card (10 / BGS 9.5) or 4× (9).
 - [ ] Free eBay check: compare with the same card and grade for sale right now (Buy It Now, ships to Canada, all-in). Skip unless it's **≥15% below the cheapest other copy**, or takes Best Offer within 10% of it, or is an auction. Needs ≥2 other copies to apply.
-- [ ] eBay sold median **for that exact grade** (PokemonPriceTracker, cached a day); at least 10 sales and one in the last 90 days.
+- [ ] Value = eBay sold median **for that exact grade** (PokemonPriceTracker, cached a day). No sold data → cheapest other copy for sale. No minimum number of sales.
 - [ ] Resale = median − 13.25% − C$0.40 − C$12 tracked shipping. Cost = price + shipping to H7T 2W7 + 14.975% tax.
 - [ ] **Buy:** meets the steal/good bar as listed.
 - [ ] **Offer:** listing takes Best Offer and the price that makes it a good deal is ≥ 75% of asking → "Offer C$X".

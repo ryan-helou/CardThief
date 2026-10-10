@@ -319,7 +319,7 @@ const passResult = (stage, summary, extra = {}) => ({
 });
 
 // Cheapest stage that can decide wins. Returns { stage, tier, ... }.
-export async function judge(cfg, l, { allowStage3 = true } = {}) {
+export async function judge(cfg, l, { allowStage3 = true, detail = null } = {}) {
   const fx = await getFx();
   const cost0 = l.priceCad + (l.shippingCad || 0) + (l.source === 'ebay' ? (l.priceCad + (l.shippingCad || 0)) * cfg.money.buyerTaxOnline : 0);
   const { good } = cfg.deal;
@@ -351,6 +351,8 @@ export async function judge(cfg, l, { allowStage3 = true } = {}) {
 
   // Stage 3: Sonnet reads up to 4 photos, following the mint-deal-check checklist.
   if (!allowStage3) throw new Error('rate limit: Sonnet hourly cap reached, retrying later');
+  // Full listing page (description + every photo) only now, for the few that reach Stage 3.
+  if (detail) l = { ...(await detail(l)), hint: l.hint };
   const { dir, n } = await downloadImages(l, 4);
   try {
     const ident = await runClaude(cfg, PROMPT({ ...l, hint }), n ? dir : null, {

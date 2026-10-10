@@ -110,7 +110,7 @@ export async function facebookDetail(cfg, listing) {
     });
     // Thumbnail strip: click through so the larger photos load.
     const thumbs = page.locator('[role="main"] [aria-label*="Thumbnail"], [role="main"] div[role="button"] img');
-    const n = Math.min(await thumbs.count().catch(() => 0), 8);
+    const n = Math.min(await thumbs.count().catch(() => 0), 4);
     const more = [];
     for (let i = 0; i < n; i++) {
       await thumbs.nth(i).click({ timeout: 2000 }).catch(() => {});

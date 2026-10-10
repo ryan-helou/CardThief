@@ -119,10 +119,9 @@ export async function judgeSlab(cfg, l) {
   // Value: eBay sold median for that grade; if there's none (or no lookups left today),
   // fall back to the cheapest other copy for sale, minus the tax that's baked into it.
   let sold = pptAvailable() ? await gradePrice({ ...card, grade }) : null;
-  if (!sold && comps?.count >= s.minComps) {
-    sold = { usd: comps.cheapest / (1 + m.buyerTaxOnline) / fx.USD, basis: `cheapest other listing (no sold data)`, sales: null, lastSale: null };
-  }
-  if (!sold) return pass(`no price data for ${card.name} ${card.number} ${grade}`, { cost });
+  // Asking prices are not values: a Squawkabilly ex PSA 10 was "listed from C$96" while it actually
+  // sells for ~US$26 (Collectr, 2026-10-10). Only real sales can make an alert.
+  if (!sold) return pass(`no eBay sold data for ${card.name} ${card.number} ${grade}${comps?.count ? ` (others listed from C$${comps.cheapest.toFixed(0)}, asking only)` : ''}`, { cost });
 
   const market = sold.usd * fx.USD;
   const resale = market * (1 - m.ebaySellFee) - m.ebayOrderFee - s.resaleShipCad;

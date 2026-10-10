@@ -41,7 +41,7 @@ export function parseTitle(t) {
   let name = null;
   if (num) {
     const before = t.slice(0, num.index).replace(NOISE, ' ').replace(/[^\p{L}\s'&.-]/gu, ' ').replace(/\s+/g, ' ').trim();
-    name = before.split(' ').slice(-3).join(' ') || null; // card names sit right before the number
+    name = before.split(' ').filter(w => /\p{L}/u.test(w)).slice(-3).join(' ').replace(/^[^\p{L}]+/u, '') || null; // card names sit right before the number
   }
   const variant = /1st\s*ed|1[eè]re\s*[ée]d|first edition/i.test(t) ? '1st' : /reverse/i.test(t) ? 'reverse' : 'unknown';
   return { variant, name, number: num ? (num[2] ? `${num[1]}/${num[2]}` : num[1]) : null, setTotal: num?.[2] ? Number(num[2]) : null, grade: grade ? `${grade[1].toUpperCase()} ${grade[2]}` : null, language: lang };

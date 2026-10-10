@@ -51,3 +51,16 @@ Read every photo. Then fill in, honestly and conservatively:
   - **Good:** profit ≥ C$20 and return ≥ 30%
 - [ ] Resale math: market × condition haircut (NM 1.0, LP 0.8, MP 0.6, HP 0.4, unknown 0.85) × language (FR 0.7, JP 0.8), minus eBay fees and C$3 shipping per single; cards under C$10 count at 40%; bulk C$0.02 per card.
 - [ ] Opener: "still available?" + one thing (an offer at the steal price if below asking). Ryan taps Send; Mint never messages on its own.
+
+## eBay slabs mode (current, set `"mode": "slabs"`)
+Mint watches eBay **graded Pokémon cards only**: new listings from Canadian sellers, plus auctions ending within the hour (any country except Asia). No AI unless something passes every check.
+- [ ] English slab (Japanese/Korean/Chinese skipped: no sold data yet).
+- [ ] Grader PSA, CGC, BGS, TAG or SGC, **grade 9 or higher** (from the title, else the seller's eBay grade fields).
+- [ ] Card identified (name + number, incl. PSA-label titles like "#199 CHARIZARD EX PSA 10").
+- [ ] Free ceiling check: skip if all-in already exceeds 12× the raw card (10 / BGS 9.5) or 4× (9).
+- [ ] eBay sold median **for that exact grade** (PokemonPriceTracker, cached a day); at least 10 sales and one in the last 90 days.
+- [ ] Resale = median − 13.25% − C$0.40 − C$12 tracked shipping. Cost = price + shipping to H7T 2W7 + 14.975% tax.
+- [ ] **Buy:** meets the steal/good bar as listed.
+- [ ] **Offer:** listing takes Best Offer and the price that makes it a good deal is ≥ 75% of asking → "Offer C$X".
+- [ ] **Auction:** ≤ 1 bid and the max bid for a good deal is ≥ 10% above the current bid → "Bid up to C$X".
+- [ ] Before alerting, Haiku checks the photos: label matches the card and grade, slab looks genuine.

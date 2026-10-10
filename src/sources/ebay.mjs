@@ -34,8 +34,12 @@ function toCad(value, currency, fx) {
 // Newly listed items for one query, posted after `since`.
 export async function searchEbay(cfg, query, since, fx) {
   const t = await getToken(cfg.ebayKeys);
-  const filters = [query.filter, `itemStartDate:[${since.toISOString()}..]`].filter(Boolean).join(',');
-  const params = new URLSearchParams({ q: query.q, sort: 'newlyListed', limit: '100', filter: filters });
+  // Auction queries look at what ends soon; everything else at what was listed since the last poll.
+  const window = query.endWithinMin
+    ? `itemEndDate:[..${new Date(Date.now() + query.endWithinMin * 60e3).toISOString()}]`
+    : `itemStartDate:[${since.toISOString()}..]`;
+  const filters = [query.filter, window].filter(Boolean).join(',');
+  const params = new URLSearchParams({ q: query.q, sort: query.sort || 'newlyListed', limit: '100', filter: filters });
   if (query.categoryIds) params.set('category_ids', query.categoryIds);
   const res = await fetchJson(`https://api.ebay.com/buy/browse/v1/item_summary/search?${params}`, {
     headers: {
@@ -57,7 +61,7 @@ export async function searchEbay(cfg, query, since, fx) {
       url: it.itemWebUrl,
       title: it.title,
       description: it.shortDescription || '',
-      priceCad: toCad(it.price?.value, it.price?.currency, fx),
+      priceCad: toCad((it.price || it.currentBidPrice)?.value, (it.price || it.currentBidPrice)?.currency, fx),
       priceNative: it.price ? `${it.price.value} ${it.price.currency}` : null,
       shippingCad: shipCad ?? (fromCanada ? 15 : 30),
       shippingEstimated: shipCad == null,

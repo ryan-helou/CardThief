@@ -19,10 +19,12 @@ export function prefilter(cfg, l) {
   if (!fb && !new RegExp(cfg.titleMustMatch, 'i').test(text)) return 'no card keywords';
   if (l.priceCad == null) return l.priceType === 'CONTACT' ? 'no price (contact)' : 'no price';
   if (l.priceCad <= 0) return 'free/zero price';
-  if (l.priceCad < (cfg.minPriceCad ?? 20)) return `under C$${cfg.minPriceCad ?? 20} ($${l.priceCad})`;
+  const auction = l.buyingOptions?.includes('AUCTION') && !l.buyingOptions?.includes('FIXED_PRICE');
+  if (!auction && l.priceCad < (cfg.minPriceCad ?? 20)) return `under C$${cfg.minPriceCad ?? 20} ($${l.priceCad})`;
   if (l.priceCad > cfg.maxBuyCad) return `over max buy ($${l.priceCad})`;
   // eBay from outside Canada: only lots survive the 20–35% cross-border costs.
-  if (l.source === 'ebay' && l.country !== 'CA' && !isLot(l.title)) return 'foreign eBay single';
+  if (l.source === 'ebay' && ['JP', 'CN', 'KR', 'HK', 'TW'].includes(l.country)) return 'ships from Asia';
+  if (l.source === 'ebay' && l.country !== 'CA' && !auction && !isLot(l.title)) return 'foreign eBay single';
   return null;
 }
 
@@ -268,6 +270,21 @@ export async function value(cfg, l, ident, { pptOk = true, strict = false } = {}
   const stealPrice = (resale - (l.shippingCad || 0)) / (1 + steal.minRoi);
   const offer = Math.max(5, Math.min(price, Math.floor(stealPrice / 5) * 5));
   return { tier, price, cost, resale, profit, roi, marketTotal, bulk, lines, offer };
+}
+
+// Slab alerts only: one look at the photos to confirm the label matches and the slab looks genuine.
+const SLAB_SCHEMA = { type: 'object', properties: { ok: { type: 'boolean' }, note: { type: 'string' } }, required: ['ok', 'note'] };
+export async function verifySlabPhotos(cfg, l, cardLabel, grade) {
+  const { dir, n } = await downloadImages(l, 3);
+  try {
+    if (!n) return { ok: true, note: 'No photos to check.' };
+    return await runClaude(cfg, `eBay listing: ${l.title}\nExpected slab: ${cardLabel}, ${grade}.\nLook at the photos. ok=true only if the slab label shows this card and grade and the slab looks genuine (correct label design, no tampering, not a "proxy"/custom). note: one short sentence for the buyer (e.g. cert number seen, centering, any concern).`, dir, {
+      model: cfg.triageModel || 'haiku', schema: SLAB_SCHEMA, maxPx: 1024,
+      system: 'You check graded Pokémon card slabs in listing photos for a reseller. Be strict about label mismatches and fakes.',
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 const passResult = (stage, summary, extra = {}) => ({

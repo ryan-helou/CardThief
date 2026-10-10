@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   if (isNew) {
     const head = d.tier === "steal" ? "🔥 Steal" : "Good deal";
     push = await sendPush({
-      title: `${head} +${money(d.profit)} · ${money(d.cost)} all-in · ${d.source}`,
+      title: d.action === "offer" ? `${head}: offer ${money(d.offer ?? 0)} · +${money(d.profit)}` : d.action === "auction" ? `${head}: bid ≤ ${money(d.offer ?? 0)} · ends soon` : `${head} +${money(d.profit)} · ${money(d.cost)} all-in`,
       body: d.title.slice(0, 120) + (d.summary ? `\n${d.summary.slice(0, 110)}` : ""),
       tag: d.id,
       url: `/#${encodeURIComponent(d.id)}`,

@@ -75,7 +75,17 @@ function DealCard({ r }: { r: DealRow }) {
             {d.title}
           </a>
           <p className="mt-0.5 text-sm text-[var(--ink-2)] num">
-            {money(d.cost)} all-in → {money(d.resale)}{" "}
+            {d.action === "offer" ? (
+              <span className="font-medium text-[var(--accent)]">Offer {money(d.offer)} (asking {money(d.price)})</span>
+            ) : d.action === "auction" ? (
+              <span className="font-medium text-[var(--accent)]">
+                Bid up to {money(d.offer)} · now {money(d.price)}, {d.bids ?? 0} bids
+                {d.endsAt ? `, ends ${new Date(d.endsAt).toLocaleTimeString("en-CA", { timeZone: "America/Toronto", hour: "numeric", minute: "2-digit" })}` : ""}
+              </span>
+            ) : (
+              <>{money(d.cost)} all-in</>
+            )}{" "}
+            → {money(d.resale)}{" "}
             <span className="text-[var(--ink-3)]">
               · {Math.round(d.roi * 100)}% · {d.source === "ebay" ? `incl. ${money(d.shipping)} ship to H7T + tax` : "local pickup"}
             </span>

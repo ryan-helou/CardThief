@@ -96,7 +96,7 @@ async function drain(cfg) {
     judgedAt.push(Date.now());
     try {
       if (l.source === 'kijiji') l = await kijijiDetail(l);
-      if (l.source === 'ebay') l = await ebayDetail(cfg, l, await getFx());
+      if (l.source === 'ebay' && cfg.mode !== 'slabs') l = await ebayDetail(cfg, l, await getFx());
       if (l.source === 'facebook') l = await facebookDetail(cfg, l);
       const r = cfg.mode === 'slabs' && l.source === 'ebay'
         ? await judgeSlab(cfg, l)

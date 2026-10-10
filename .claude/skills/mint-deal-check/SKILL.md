@@ -59,7 +59,7 @@ Mint watches eBay **graded Pokémon cards only**: new listings from Canadian sel
 - [ ] Card identified from the title (incl. PSA-label titles like "#199 CHARIZARD EX PSA 10"); if the title doesn't say, **Haiku reads the slab label from the photos**.
 - [ ] Free ceiling check: skip if all-in already exceeds 12× the raw card (10 / BGS 9.5) or 4× (9).
 - [ ] Free eBay check: compare with the same card and grade for sale right now (Buy It Now, ships to Canada, all-in). Skip unless it's **≥10% below the cheapest other copy**, or takes Best Offer within 10% of it, or is an auction. Needs ≥2 other copies to apply.
-- [ ] Value = eBay sold median **for that exact grade** (PokemonPriceTracker, cached a day). No sold data → cheapest other copy for sale. No minimum number of sales.
+- [ ] Value = eBay sold median **for that exact grade** (PokemonPriceTracker, cached a day). **No sold data → no alert** (asking prices run 3–4× real sales on cheap modern slabs). No minimum number of sales.
 - [ ] Resale = median − 13.25% − C$0.40 − C$12 tracked shipping. Cost = price + shipping to H7T 2W7 + 14.975% tax.
 - [ ] **Buy:** meets the steal/good bar as listed.
 - [ ] **Offer:** listing takes Best Offer and the price that makes it a good deal is ≥ 75% of asking → "Offer C$X".

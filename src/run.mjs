@@ -83,7 +83,9 @@ const beat = c => heartbeat({ kijiji: stats.kijiji, facebook: c.facebook?.enable
 
 async function drain(cfg) {
   if (Date.now() < judgePausedUntil) return;
-  while (queue.length) {
+  // Judge for a few minutes at most, then let the searches run again; otherwise a long queue starves them.
+  const until = Date.now() + (cfg.drainMinutes ?? 3) * 60e3;
+  while (queue.length && Date.now() < until) {
     await processOutbox();
     await beat(cfg);
     const hourAgo = Date.now() - 3600e3;

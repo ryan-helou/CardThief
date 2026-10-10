@@ -33,7 +33,9 @@ async function enqueue(cfg, l) {
     if (d != null && d > cfg.maxDistanceKm) { seen.add(l.id); appendJsonl('skipped', { at: new Date().toISOString(), id: l.id, title: l.title, price: l.priceCad, why: `${d} km away` }); return; }
   }
   const age = Date.now() - new Date(l.postedAt).getTime();
-  if (age > cfg.firstRunLookbackHours * 3600e3) { seen.add(l.id); return; } // old or bumped ad
+  // Old or bumped ad. Auctions are exempt: they're listed days before the ending we care about.
+  const auction = l.buyingOptions?.includes('AUCTION') && !l.buyingOptions?.includes('FIXED_PRICE');
+  if (!auction && age > cfg.firstRunLookbackHours * 3600e3) { seen.add(l.id); return; }
   const why = prefilter(cfg, l);
   if (why) { seen.add(l.id); appendJsonl('skipped', { at: new Date().toISOString(), id: l.id, title: l.title, price: l.priceCad, why }); return; }
   queue.push(l);

@@ -95,6 +95,9 @@
     "maxNineMultiple": 4,
     "resaleShipCad": 12,
     "maxBids": 1,
-    "minOfferRatio": 0.75
+    "minOfferRatio": 0.75,
+    "minComps": 2,
+    "minBelowCheapest": 0.15,
+    "offerSlack": 0.1
   }
 }

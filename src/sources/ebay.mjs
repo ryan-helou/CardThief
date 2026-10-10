@@ -98,3 +98,40 @@ export async function ebayDetail(cfg, listing, fx) {
     return listing;
   }
 }
+
+// Free price check: the same card in the same grade, for sale right now (Buy It Now, ships to Canada),
+// all-in to H7T 2W7. A slab is only interesting if it's clearly cheaper than these.
+const compCache = new Map();
+export async function activeComps(cfg, card, grade, selfId, fx) {
+  const num = String(card.number).split('/')[0].replace(/^0+(?=\d)/, '');
+  const [grader, g] = grade.split(' ');
+  const key = `${card.name}|${num}|${grade}`.toLowerCase();
+  const hit = compCache.get(key);
+  if (hit && Date.now() - hit.at < 6 * 3600e3) return hit.v;
+  const t = await getToken(cfg.ebayKeys);
+  const params = new URLSearchParams({
+    q: `${card.name} ${num} ${grader} ${g}`, category_ids: '183454', sort: 'price', limit: '50',
+    filter: 'conditionIds:{2750},deliveryCountry:CA,buyingOptions:{FIXED_PRICE}',
+  });
+  const res = await fetchJson(`https://api.ebay.com/buy/browse/v1/item_summary/search?${params}`, {
+    headers: { authorization: `Bearer ${t}`, 'X-EBAY-C-MARKETPLACE-ID': cfg.ebay.marketplace, 'X-EBAY-C-ENDUSERCTX': `contextualLocation=${encodeURIComponent('country=CA,zip=H7T2W7')}` },
+  });
+  const gradeRe = new RegExp(`\\b${grader}\\s*-?\\s*${g.replace('.', '\\.')}(?![\\d.])`, 'i');
+  const numRe = new RegExp(`(#|\\b)0*${num}\\b`);
+  const tax = cfg.money.buyerTaxOnline;
+  const prices = (res.itemSummaries || [])
+    .filter(it => `ebay:${it.legacyItemId}` !== selfId && gradeRe.test(it.title) && numRe.test(it.title))
+    .filter(it => !/japan|japon|\bjp\b|korean|chinese|\blot\b|bundle|\bx\d|\d+x\b/i.test(it.title))
+    .filter(it => !['JP', 'CN', 'KR', 'HK', 'TW'].includes(it.itemLocation?.country))
+    .map(it => {
+      const p = toCad(it.price?.value, it.price?.currency, fx);
+      const s = it.shippingOptions?.[0]?.shippingCost;
+      const ship = s ? toCad(s.value, s.currency, fx) : (it.itemLocation?.country === 'CA' ? 15 : 30);
+      return (p + ship) * (1 + tax);
+    })
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b);
+  const v = { count: prices.length, cheapest: prices[0] ?? null, median: prices.length ? prices[Math.floor(prices.length / 2)] : null };
+  compCache.set(key, { at: Date.now(), v });
+  return v;
+}

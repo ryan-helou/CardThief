@@ -51,7 +51,7 @@ export async function pptPrice(card) {
   const sales = hit.ebay?.salesByGrade || {};
   const g = card.grade ? gradeKey(card.grade) : 'ungraded';
   const s = g ? sales[g] : null;
-  if (s?.medianPrice && s.count >= 3) {
+  if (s?.medianPrice && s.count >= 1) {
     return { usd: s.medianPrice, basis: `eBay sold median ${g === 'ungraded' ? 'raw' : g.toUpperCase().replace('_', '.')} (${s.count} sales)`, sales: s.count, lastSale: s.lastSaleDate, id: hit.id, label: hit.name };
   }
   if (!card.grade && hit.prices?.market) return { usd: hit.prices.market, basis: 'TCGplayer market', sales: null, lastSale: null, id: hit.id, label: hit.name };

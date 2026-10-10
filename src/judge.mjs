@@ -290,6 +290,28 @@ export async function verifySlabPhotos(cfg, l, cardLabel, grade) {
   }
 }
 
+// When a slab's title doesn't say which card it is, read the label from the photos (Haiku, ~2 photos).
+const SLAB_ID_SCHEMA = {
+  type: 'object',
+  properties: {
+    isSingleSlab: { type: 'boolean' }, name: { type: ['string', 'null'] }, number: { type: ['string', 'null'] },
+    setName: { type: ['string', 'null'] }, grader: { type: ['string', 'null'] }, grade: { type: ['string', 'null'] },
+    language: { type: 'string', enum: ['en', 'jp', 'other', 'unknown'] },
+  },
+  required: ['isSingleSlab', 'name', 'number', 'setName', 'grader', 'grade', 'language'],
+};
+export async function identifySlabAI(cfg, l) {
+  const { dir, n } = await downloadImages(l, 2);
+  try {
+    return await runClaude(cfg, `eBay listing: ${l.title}\n${(l.description || '').slice(0, 400)}\nRead the slab label in the photos. Give the card's English name (e.g. "Charizard ex"), its collector number as printed (e.g. "199/165" or "SVP 173"), set name, grader (PSA/CGC/BGS/TAG/SGC/ACE) and grade number (e.g. "10", "9.5"). isSingleSlab=false for lots, raw cards or sealed product. Use null for anything you can't read.`, n ? dir : null, {
+      model: cfg.triageModel || 'haiku', schema: SLAB_ID_SCHEMA, maxPx: 1024,
+      system: 'You read graded trading card labels from listing photos. Be exact; never guess a number you cannot see.',
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 const passResult = (stage, summary, extra = {}) => ({
   stage, tier: 'pass', price: null, cost: 0, resale: 0, profit: 0, roi: 0, lines: [], bulk: 0, offer: null,
   ident: { kind: 'unknown', fakeRisk: 'low', summary, askSeller: '', hiddenUpside: '' }, ...extra,

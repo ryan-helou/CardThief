@@ -3,7 +3,7 @@ import path from 'node:path';
 import { DATA, log } from './util.mjs';
 import { priceCard, getFx } from './price.mjs';
 import { pptPrice, pptAvailable } from './ppt.mjs';
-import { parseTitle, verifySlabPhotos } from './judge.mjs';
+import { parseTitle, verifySlabPhotos, identifySlabAI } from './judge.mjs';
 import { activeComps } from './sources/ebay.mjs';
 
 // Slabs-only eBay mode. A graded card's condition is on the label and its value is the eBay
@@ -60,13 +60,25 @@ export async function judgeSlab(cfg, l) {
   const m = cfg.money;
   const fx = await getFx();
   if (/japan|japon|\bjp\b|jpn|korean|chinese|s-chinese|t-chinese/i.test(l.title)) return pass('non-English slab (no sold data yet)');
-  const grade = slabGrade(l);
-  if (!grade) return pass('no grade found');
+  let grade = slabGrade(l);
+  let id = grade ? await identify(l.title) : null;
+  let usedAI = false;
+  // Title didn't say which card or grade: read the slab label from the photos instead.
+  if (!grade || !id) {
+    const ai = await identifySlabAI(cfg, l).catch(e => { log('slab id failed', e.message); return null; });
+    usedAI = true;
+    if (!ai?.isSingleSlab) return pass('not a single graded card', { stage: 2 });
+    if (ai.language !== 'en') return pass('non-English slab (no sold data yet)', { stage: 2 });
+    if (!grade && ai.grader && ai.grade) grade = `${ai.grader.toUpperCase()} ${ai.grade}`;
+    if (!grade) return pass('no grade found', { stage: 2 });
+    if (!id && ai.name && ai.number) {
+      id = await identify(`${ai.name} ${ai.number}`) || { card: { name: ai.name, number: ai.number, setTotal: Number(String(ai.number).split('/')[1]) || null, variant: 'unknown' }, raw: null };
+    }
+    if (!id) return pass(`couldn't read the card from the photos either`, { stage: 2 });
+  }
   const [grader, num] = grade.split(' ');
-  if (!s.graders.includes(grader)) return pass(`grader ${grader} not tracked`);
+  if (!s.graders.includes(grader)) return pass(`grader ${grader} not tracked`, { stage: usedAI ? 2 : 1 });
   if (Number(num) < s.minGrade) return pass(`${grade} below minimum grade`);
-  const id = await identify(l.title);
-  if (!id) return pass(`couldn't identify the card from "${l.title}"`);
 
   const tax = (l.priceCad + (l.shippingCad || 0)) * m.buyerTaxOnline;
   const cost = l.priceCad + (l.shippingCad || 0) + tax;
@@ -87,11 +99,13 @@ export async function judgeSlab(cfg, l) {
     const offerRoom = l.buyingOptions?.includes('BEST_OFFER') && cost <= comps.cheapest * (1 + s.offerSlack);
     if (!beatsAll && !offerRoom && !isAuctionL) return pass(`C$${cost.toFixed(0)} all-in; ${comps.count} others listed from C$${comps.cheapest.toFixed(0)}`, { cost });
   }
-  if (!pptAvailable()) return pass('out of eBay sold-price lookups for today', { cost, retry: true });
-  const sold = await gradePrice({ ...card, grade });
-  if (!sold) return pass(`no eBay sold data for ${card.name} ${card.number} ${grade}`, { cost });
-  const daysSince = sold.lastSale ? (Date.now() - new Date(sold.lastSale)) / 864e5 : 999;
-  if ((sold.sales ?? 0) < s.minSales || daysSince > s.maxDaysSinceSale) return pass(`illiquid: ${sold.sales} sales, last ${Math.round(daysSince)} days ago`, { cost });
+  // Value: eBay sold median for that grade; if there's none (or no lookups left today),
+  // fall back to the cheapest other copy for sale, minus the tax that's baked into it.
+  let sold = pptAvailable() ? await gradePrice({ ...card, grade }) : null;
+  if (!sold && comps?.count >= s.minComps) {
+    sold = { usd: comps.cheapest / (1 + m.buyerTaxOnline) / fx.USD, basis: `cheapest other listing (no sold data)`, sales: null, lastSale: null };
+  }
+  if (!sold) return pass(`no price data for ${card.name} ${card.number} ${grade}`, { cost });
 
   const market = sold.usd * fx.USD;
   const resale = market * (1 - m.ebaySellFee) - m.ebayOrderFee - s.resaleShipCad;
@@ -135,7 +149,7 @@ export async function judgeSlab(cfg, l) {
   const fullSummary = `${summary}${compsNote}${summaryNote ? ' ' + summaryNote : ''}`;
   log(`slab ${l.id}: ${grade} cost C$${cost.toFixed(0)} market C$${market.toFixed(0)} → ${tier} (${action})`);
   return {
-    stage: tier === 'pass' ? 1 : 3, tier, action, price: l.priceCad, cost: showCost, resale, profit: showProfit, roi: showRoi, lines: [line], bulk: 0,
+    stage: tier === 'pass' ? (usedAI ? 2 : 1) : 3, tier, action, price: l.priceCad, cost: showCost, resale, profit: showProfit, roi: showRoi, lines: [line], bulk: 0,
     offer: action === 'buy' ? null : maxItem, maxItem,
     ident: { kind: 'graded', fakeRisk: 'low', summary: fullSummary, askSeller: '', hiddenUpside: '', grade, sales: sold.sales },
   };

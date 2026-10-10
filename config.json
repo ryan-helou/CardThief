@@ -86,7 +86,8 @@
       "CGC",
       "BGS",
       "TAG",
-      "SGC"
+      "SGC",
+      "ACE"
     ],
     "minGrade": 9,
     "minSales": 10,

@@ -56,7 +56,14 @@ export async function sweepFacebook(cfg) {
   const found = new Map();
   try {
     for (const q of cfg.facebook.queries) {
-      await page.goto(searchUrl(cfg, q), { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      // One slow search shouldn't sink the whole sweep: skip it and keep going.
+      try {
+        await page.goto(searchUrl(cfg, q), { waitUntil: 'domcontentloaded', timeout: 90_000 });
+      } catch (e) {
+        if (/logged out/.test(e.message)) throw e;
+        log(`facebook "${q}" skipped: ${e.message.split('\n')[0]}`);
+        continue;
+      }
       await sleep(jitter(4000));
       if (await loggedOut(page)) throw new Error('facebook: logged out — run `npm run fb-login`');
       // Scroll a little, as a person would, so more tiles load.

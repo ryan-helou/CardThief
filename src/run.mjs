@@ -19,7 +19,8 @@ const saveState = () => fs.writeFileSync(statePath, JSON.stringify(state, null, 
 const queue = [];
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
 const stats = { day: today(), judged: 0, deals: 0, kijiji: null, ebay: null, facebook: null, lastError: null };
-const judgedAt = [];
+const judgedAt = []; // any AI check (Haiku or Sonnet)
+const sonnetAt = []; // full Sonnet checks only
 let judgePausedUntil = 0;
 
 async function enqueue(cfg, l) {
@@ -84,7 +85,8 @@ async function drain(cfg) {
     await beat(cfg);
     const hourAgo = Date.now() - 3600e3;
     while (judgedAt.length && judgedAt[0] < hourAgo) judgedAt.shift();
-    if (judgedAt.length >= cfg.maxJudgementsPerHour) { log(`judge budget hit, ${queue.length} waiting`); return; }
+    while (sonnetAt.length && sonnetAt[0] < hourAgo) sonnetAt.shift();
+    if (judgedAt.length >= (cfg.maxTriagePerHour || cfg.maxJudgementsPerHour)) { log(`judge budget hit, ${queue.length} waiting`); return; }
     // Cheapest first: the best ROI tends to hide in the low-priced listings.
     queue.sort((a, b) => a.priceCad - b.priceCad);
     let l = queue.shift();
@@ -93,7 +95,8 @@ async function drain(cfg) {
       if (l.source === 'kijiji') l = await kijijiDetail(l);
       if (l.source === 'ebay') l = await ebayDetail(cfg, l, await getFx());
       if (l.source === 'facebook') l = await facebookDetail(cfg, l);
-      const r = await judge(cfg, l);
+      const r = await judge(cfg, l, { allowStage3: sonnetAt.length < cfg.maxJudgementsPerHour });
+      if (r.stage === 3) sonnetAt.push(Date.now());
       if (r.stage === 1) judgedAt.pop(); // priced from the title: no AI used, doesn't count toward the hourly cap
       seen.add(l.id); seen.save();
       stats.judged++;

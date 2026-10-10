@@ -30,11 +30,11 @@ Work down the stages. Stop at the first stage that can decide. AI is the last re
 - [ ] Looks like a deal → Stage 3 to verify photos (fakes, condition, right card).
 
 ## Stage 2: quick look (Haiku, title + one photo)
-- [ ] Only for listings Stage 1 couldn't settle.
+- [ ] Only for listings Stage 1 couldn't settle. Up to 60 an hour.
 - [ ] One question: could this plausibly resell for **≥ 1.3× its all-in cost**? Give a rough value.
 - [ ] No → pass. Yes → Stage 3.
 
-## Stage 3: full judgement (Sonnet, up to 4 photos)
+## Stage 3: full judgement (Sonnet, up to 4 photos, max 20 an hour)
 Read every photo. Then fill in, honestly and conservatively:
 - [ ] **What it is:** single / lot / graded / sealed / mixed; card language.
 - [ ] **Cards worth ≥ US$2:** English name (translate French: Dracaufeu → Charizard), number, set, variant (holo/reverse/1st), grade if slabbed, visible condition (NM/LP/MP/HP/DMG), quantity, estimated US$ value. Don't guess an expensive card you can't read.

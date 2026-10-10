@@ -75,5 +75,6 @@
   "maxMessagesPerDay": 8,
   "minPriceCad": 20,
   "triageModel": "haiku",
-  "pptReserveCredits": 10
+  "pptReserveCredits": 10,
+  "maxTriagePerHour": 60
 }

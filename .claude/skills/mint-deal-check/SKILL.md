@@ -64,4 +64,4 @@ Mint watches eBay **graded Pokémon cards only**: new listings from Canadian sel
 - [ ] **Buy:** meets the steal/good bar as listed.
 - [ ] **Offer:** listing takes Best Offer and the price that makes it a good deal is ≥ 75% of asking → "Offer C$X".
 - [ ] **Auction:** ≤ 1 bid and the max bid for a good deal is ≥ 10% above the current bid → "Bid up to C$X".
-- [ ] Before alerting, Haiku checks the photos: label matches the card and grade, slab looks genuine.
+- [ ] Before alerting: **PSA slabs get their cert checked with PSA** (must exist and match card + grade, else no alert), then Haiku checks the photos: label matches the card and grade, slab looks genuine.

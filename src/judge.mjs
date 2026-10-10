@@ -277,12 +277,12 @@ export async function value(cfg, l, ident, { pptOk = true, strict = false } = {}
 }
 
 // Slab alerts only: one look at the photos to confirm the label matches and the slab looks genuine.
-const SLAB_SCHEMA = { type: 'object', properties: { ok: { type: 'boolean' }, note: { type: 'string' } }, required: ['ok', 'note'] };
+const SLAB_SCHEMA = { type: 'object', properties: { ok: { type: 'boolean' }, note: { type: 'string' }, cert: { type: ['string', 'null'] } }, required: ['ok', 'note', 'cert'] };
 export async function verifySlabPhotos(cfg, l, cardLabel, grade) {
   const { dir, n } = await downloadImages(l, 3);
   try {
     if (!n) return { ok: true, note: 'No photos to check.' };
-    return await runClaude(cfg, `eBay listing: ${l.title}\nExpected slab: ${cardLabel}, ${grade}.\nLook at the photos. ok=true only if the slab label shows this card and grade and the slab looks genuine (correct label design, no tampering, not a "proxy"/custom). note: one short sentence for the buyer (e.g. cert number seen, centering, any concern).`, dir, {
+    return await runClaude(cfg, `eBay listing: ${l.title}\nExpected slab: ${cardLabel}, ${grade}.\nLook at the photos. ok=true only if the slab label shows this card and grade and the slab looks genuine (correct label design, no tampering, not a "proxy"/custom). note: one short sentence for the buyer (centering, any concern). cert: the certification number printed on the label (digits only), or null if you can't read it.`, dir, {
       model: cfg.triageModel || 'haiku', schema: SLAB_SCHEMA, maxPx: 1024,
       system: 'You check graded Pokémon card slabs in listing photos for a reseller. Be strict about label mismatches and fakes.',
     });

@@ -5,6 +5,7 @@ import { priceCard, getFx } from './price.mjs';
 import { pptPrice, pptAvailable } from './ppt.mjs';
 import { parseTitle, verifySlabPhotos, identifySlabAI } from './judge.mjs';
 import { activeComps, ebayDetail } from './sources/ebay.mjs';
+import { checkPsaCert, certFromListing } from './psa.mjs';
 
 // Slabs-only eBay mode. A graded card's condition is on the label and its value is the eBay
 // sold median for that exact grade, so most slabs are judged with no AI at all.
@@ -151,9 +152,16 @@ export async function judgeSlab(cfg, l) {
     showRoi = showProfit / showCost;
   }
   if (tier !== 'pass') {
-    const v = await verifySlabPhotos(cfg, l, `${card.name} ${card.number}`, grade).catch(e => ({ ok: true, note: `photo check skipped: ${e.message}` }));
+    // Alert candidate: full listing (item specifics hold the cert), photo check (also reads the cert off the label), then PSA.
+    if (!certFromListing(l)) l = await ebayDetail(cfg, l, fx);
+    const v = await verifySlabPhotos(cfg, l, `${card.name} ${card.number}`, grade).catch(e => ({ ok: true, note: `photo check skipped: ${e.message}`, cert: null }));
     if (!v.ok) return pass(`photo check failed: ${v.note}`, { cost, stage: 3 });
     summaryNote = v.note;
+    if (grader === 'PSA') {
+      const pc = await checkPsaCert(certFromListing(l) || v.cert, card, grade);
+      if (pc.checked && !pc.ok) return pass(`cert check failed: ${pc.note}`, { cost, stage: 3 });
+      summaryNote = `${pc.note} ${summaryNote}`;
+    }
   }
   const compsNote = comps?.count ? ` Cheapest other ${grade} for sale: C$${comps.cheapest.toFixed(0)} all-in (${comps.count} listed).` : '';
   const line = { label: `${card.name} ${card.number} ${grade}`, marketCad: +market.toFixed(2), netCad: +resale.toFixed(2), basis: `${sold.basis}, last sale ${String(sold.lastSale || '').slice(0, 10)}` };

@@ -33,7 +33,7 @@ const isLot = t => /\b(lot|bundle|collection|binder|classeur|cartable|bulk|vrac|
 const isSealed = t => /\b(etb|elite trainer|booster box|booster bundle|display|tin|blister|scell[ée]|sealed|neuf)\b/i.test(t);
 
 // ---------- Stage 1: identify a single card from the title, no AI ----------
-const NOISE = /\b(pok[eé]mon|tcg|promo|japanese|jpn|jp|card|carte|cards|cartes|holo|reverse|rare|ultra|secret|full art|alt art|sir|sar|ir|near mint|nm|lp|mint|english|anglais|fr|en|psa|cgc|bgs|sgc|tag|ace|graded|slab|the|de|du|la|le|\d{4})\b/gi;
+const NOISE = /\b(gem|gem mint|pristine|sv\d+[a-z]?|s\d+[a-z]|swsh\d+|sm\d+[a-z]?|ssr|sar|ar|chr|csr|ur|hr|rr|pok[eé]mon|tcg|promo|japanese|jpn|jp|card|carte|cards|cartes|holo|reverse|rare|ultra|secret|full art|alt art|sir|sar|ir|near mint|nm|lp|mint|english|anglais|fr|en|psa|cgc|bgs|sgc|tag|ace|graded|slab|the|de|du|la|le|\d{4})\b/gi;
 export function parseTitle(t) {
   const grade = t.match(/\b(PSA|CGC|BGS|SGC|TAG|ACE)\s*-?\s*(10|9\.5|9|8\.5|8|7\.5|7|6|5)\b/i);
   const num = t.match(/\b(\d{1,3})\s*\/\s*(\d{2,3})\b/) || t.match(/\b(\d{1,3}\s*\/\s*(?:SV|SM|S|XY|BW|DP)-?P)\b/i) || t.match(/\b((?:SV|SWSH|SM|XY|BW)P?\s?-?\d{2,3})\b/i);
@@ -277,12 +277,12 @@ export async function value(cfg, l, ident, { pptOk = true, strict = false } = {}
 }
 
 // Slab alerts only: one look at the photos to confirm the label matches and the slab looks genuine.
-const SLAB_SCHEMA = { type: 'object', properties: { ok: { type: 'boolean' }, note: { type: 'string' }, cert: { type: ['string', 'null'] } }, required: ['ok', 'note', 'cert'] };
+const SLAB_SCHEMA = { type: 'object', properties: { ok: { type: 'boolean' }, note: { type: 'string' }, cert: { type: ['string', 'null'] }, cardName: { type: ['string', 'null'] } }, required: ['ok', 'note', 'cert', 'cardName'] };
 export async function verifySlabPhotos(cfg, l, cardLabel, grade) {
   const { dir, n } = await downloadImages(l, 3);
   try {
     if (!n) return { ok: true, note: 'No photos to check.' };
-    return await runClaude(cfg, `eBay listing: ${l.title}\nExpected slab: ${cardLabel}, ${grade}.\nLook at the photos. ok=true only if the slab label shows this card and grade and the slab looks genuine (correct label design, no tampering, not a "proxy"/custom). note: one short sentence for the buyer (centering, any concern). cert: the certification number printed on the label (digits only), or null if you can't read it.`, dir, {
+    return await runClaude(cfg, `eBay listing: ${l.title}\nExpected slab: ${cardLabel}, ${grade}.\nLook at the photos. ok=true only if the slab label shows this card and grade and the slab looks genuine (correct label design, no tampering, not a "proxy"/custom). note: one short sentence for the buyer (centering, any concern). cert: the certification number printed on the label (digits only), or null if you can't read it. cardName: the card's name as printed on the label, in English (e.g. "Squawkabilly ex"), or null. If the expected card name above isn't a real Pokémon card name, judge the label alone.`, dir, {
       model: cfg.triageModel || 'haiku', schema: SLAB_SCHEMA, maxPx: 1024,
       system: 'You check graded Pokémon card slabs in listing photos for a reseller. Be strict about label mismatches and fakes.',
     });

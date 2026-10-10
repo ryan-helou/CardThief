@@ -5,7 +5,7 @@ import { searchKijiji, kijijiDetail } from './sources/kijiji.mjs';
 import { searchEbay, ebayDetail, ebayReady } from './sources/ebay.mjs';
 import { sweepFacebook, facebookDetail, inActiveHours } from './sources/facebook.mjs';
 import { prefilter, judge, aiUsage } from './judge.mjs';
-import { toDeal, sendDeal, heartbeat } from './notify.mjs';
+import { toDeal, sendDeal, heartbeat, retryPendingDeals } from './notify.mjs';
 import { getFx } from './price.mjs';
 import { distanceKm } from './geo.mjs';
 import { processOutbox } from './outbox.mjs';
@@ -138,6 +138,7 @@ async function main() {
     seen.save();
     if (stats.day !== today()) Object.assign(stats, { day: today(), judged: 0, deals: 0 });
     await beat(c);
+    await retryPendingDeals();
     await processOutbox();
     await drain(c);
     await beat(c);

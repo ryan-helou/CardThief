@@ -53,12 +53,12 @@ Read every photo. Then fill in, honestly and conservatively:
 - [ ] Opener: "still available?" + one thing (an offer at the steal price if below asking). Ryan taps Send; Mint never messages on its own.
 
 ## eBay slabs mode (current, set `"mode": "slabs"`)
-Mint watches eBay **graded Pokémon cards only**: new listings from Canadian sellers, plus auctions ending within the hour (any country except Asia). No AI unless something passes every check.
-- [ ] English slab (Japanese/Korean/Chinese skipped: no sold data yet).
+Mint watches eBay **graded Pokémon cards only**: new listings from Canadian sellers, new listings from anywhere that take Best Offer, and auctions ending within the hour. All costs include shipping to H7T 2W7 and tax. No AI unless something passes every check.
+- [ ] English or Japanese slab (Korean/Chinese skipped: no sold data). Japanese are priced against Japanese sales and Japanese listings only.
 - [ ] Grader PSA, CGC, BGS, TAG, SGC or ACE, any grade (from the title, else the seller's eBay grade fields). The liquidity check below decides whether a grade sells.
 - [ ] Card identified from the title (incl. PSA-label titles like "#199 CHARIZARD EX PSA 10"); if the title doesn't say, **Haiku reads the slab label from the photos**.
 - [ ] Free ceiling check: skip if all-in already exceeds 12× the raw card (10 / BGS 9.5) or 4× (9).
-- [ ] Free eBay check: compare with the same card and grade for sale right now (Buy It Now, ships to Canada, all-in). Skip unless it's **≥15% below the cheapest other copy**, or takes Best Offer within 10% of it, or is an auction. Needs ≥2 other copies to apply.
+- [ ] Free eBay check: compare with the same card and grade for sale right now (Buy It Now, ships to Canada, all-in). Skip unless it's **≥10% below the cheapest other copy**, or takes Best Offer within 10% of it, or is an auction. Needs ≥2 other copies to apply.
 - [ ] Value = eBay sold median **for that exact grade** (PokemonPriceTracker, cached a day). No sold data → cheapest other copy for sale. No minimum number of sales.
 - [ ] Resale = median − 13.25% − C$0.40 − C$12 tracked shipping. Cost = price + shipping to H7T 2W7 + 14.975% tax.
 - [ ] **Buy:** meets the steal/good bar as listed.

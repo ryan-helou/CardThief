@@ -25,6 +25,12 @@
         "filter": "conditionIds:{2750},deliveryCountry:CA,buyingOptions:{AUCTION}",
         "sort": "endingSoonest",
         "endWithinMin": 60
+      },
+      {
+        "label": "Slabs from anywhere that take Best Offer",
+        "q": "pokemon",
+        "categoryIds": "183454",
+        "filter": "conditionIds:{2750},deliveryCountry:CA,buyingOptions:{BEST_OFFER}"
       }
     ]
   },
@@ -98,7 +104,9 @@
     "maxBids": 1,
     "minOfferRatio": 0.75,
     "minComps": 2,
-    "minBelowCheapest": 0.15,
-    "offerSlack": 0.1
+    "minBelowCheapest": 0.1,
+    "offerSlack": 0.1,
+    "allowJapanese": true,
+    "maxEbayCallsPerDay": 4500
   }
 }

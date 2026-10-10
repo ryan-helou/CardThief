@@ -23,8 +23,9 @@ export function prefilter(cfg, l) {
   if (!auction && l.priceCad < (cfg.minPriceCad ?? 20)) return `under C$${cfg.minPriceCad ?? 20} ($${l.priceCad})`;
   if (l.priceCad > cfg.maxBuyCad) return `over max buy ($${l.priceCad})`;
   // eBay from outside Canada: only lots survive the 20–35% cross-border costs.
-  if (l.source === 'ebay' && ['JP', 'CN', 'KR', 'HK', 'TW'].includes(l.country)) return 'ships from Asia';
-  if (l.source === 'ebay' && l.country !== 'CA' && !auction && !isLot(l.title)) return 'foreign eBay single';
+  const slabs = cfg.mode === 'slabs';
+  if (l.source === 'ebay' && !slabs && ['JP', 'CN', 'KR', 'HK', 'TW'].includes(l.country)) return 'ships from Asia';
+  if (l.source === 'ebay' && l.country !== 'CA' && !auction && !isLot(l.title) && !(slabs && l.buyingOptions?.includes('BEST_OFFER'))) return 'foreign eBay single';
   return null;
 }
 
@@ -35,7 +36,7 @@ const isSealed = t => /\b(etb|elite trainer|booster box|booster bundle|display|t
 const NOISE = /\b(pok[eé]mon|tcg|card|carte|cards|cartes|holo|reverse|rare|ultra|secret|full art|alt art|sir|sar|ir|near mint|nm|lp|mint|english|anglais|fr|en|psa|cgc|bgs|sgc|tag|ace|graded|slab|the|de|du|la|le|\d{4})\b/gi;
 export function parseTitle(t) {
   const grade = t.match(/\b(PSA|CGC|BGS|SGC|TAG|ACE)\s*-?\s*(10|9\.5|9|8\.5|8|7\.5|7|6|5)\b/i);
-  const num = t.match(/\b(\d{1,3})\s*\/\s*(\d{2,3})\b/) || t.match(/\b((?:SV|SWSH|SM|XY|BW)P?\s?-?\d{2,3})\b/i);
+  const num = t.match(/\b(\d{1,3})\s*\/\s*(\d{2,3})\b/) || t.match(/\b(\d{1,3}\s*\/\s*(?:SV|SM|S|XY|BW|DP)-?P)\b/i) || t.match(/\b((?:SV|SWSH|SM|XY|BW)P?\s?-?\d{2,3})\b/i);
   const lang = /japan|japon|\bjp\b|jpn/i.test(t) ? 'jp' : /\bfr\b|fran[cç]ais|french/i.test(t) ? 'fr' : 'en';
   let name = null;
   if (num) {

@@ -1,4 +1,17 @@
-import { fetchJson, log } from '../util.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fetchJson as rawFetchJson, log, DATA } from '../util.mjs';
+
+// Every eBay call is counted per day: the free limit is 5,000.
+const callsFile = path.join(DATA, 'ebay-calls.json');
+const day = () => new Date().toISOString().slice(0, 10);
+export function ebayCallsToday() {
+  try { const c = JSON.parse(fs.readFileSync(callsFile, 'utf8')); return c.day === day() ? c.n : 0; } catch { return 0; }
+}
+async function fetchJson(url, opts) {
+  if (url.includes('api.ebay.com/buy/')) fs.writeFileSync(callsFile, JSON.stringify({ day: day(), n: ebayCallsToday() + 1 }));
+  return rawFetchJson(url, opts);
+}
 
 // eBay Browse API (free, 5,000 calls/day). Needs EBAY_CLIENT_ID + EBAY_CLIENT_SECRET
 // (production keyset from developer.ebay.com) in config.local.json → ebayKeys.
@@ -102,15 +115,16 @@ export async function ebayDetail(cfg, listing, fx) {
 // Free price check: the same card in the same grade, for sale right now (Buy It Now, ships to Canada),
 // all-in to H7T 2W7. A slab is only interesting if it's clearly cheaper than these.
 const compCache = new Map();
-export async function activeComps(cfg, card, grade, selfId, fx) {
+export async function activeComps(cfg, card, grade, selfId, fx, { japanese = false } = {}) {
   const num = String(card.number).split('/')[0].replace(/^0+(?=\d)/, '');
   const [grader, g] = grade.split(' ');
-  const key = `${card.name}|${num}|${grade}`.toLowerCase();
+  const key = `${card.name}|${num}|${grade}|${japanese}`.toLowerCase();
   const hit = compCache.get(key);
   if (hit && Date.now() - hit.at < 6 * 3600e3) return hit.v;
+  if (ebayCallsToday() >= (cfg.slabs?.maxEbayCallsPerDay ?? 4500)) return null; // keep headroom for searches
   const t = await getToken(cfg.ebayKeys);
   const params = new URLSearchParams({
-    q: `${card.name} ${num} ${grader} ${g}`, category_ids: '183454', sort: 'price', limit: '50',
+    q: `${card.name} ${num} ${grader} ${g}${japanese ? ' japanese' : ''}`, category_ids: '183454', sort: 'price', limit: '50',
     filter: 'conditionIds:{2750},deliveryCountry:CA,buyingOptions:{FIXED_PRICE}',
   });
   const res = await fetchJson(`https://api.ebay.com/buy/browse/v1/item_summary/search?${params}`, {
@@ -121,8 +135,8 @@ export async function activeComps(cfg, card, grade, selfId, fx) {
   const tax = cfg.money.buyerTaxOnline;
   const prices = (res.itemSummaries || [])
     .filter(it => `ebay:${it.legacyItemId}` !== selfId && gradeRe.test(it.title) && numRe.test(it.title))
-    .filter(it => !/japan|japon|\bjp\b|korean|chinese|\blot\b|bundle|\bx\d|\d+x\b/i.test(it.title))
-    .filter(it => !['JP', 'CN', 'KR', 'HK', 'TW'].includes(it.itemLocation?.country))
+    .filter(it => !/korean|chinese|\blot\b|bundle|\bx\d|\d+x\b/i.test(it.title))
+    .filter(it => japanese === /japan|japon|\bjp\b|jpn/i.test(it.title))
     .map(it => {
       const p = toCad(it.price?.value, it.price?.currency, fx);
       const s = it.shippingOptions?.[0]?.shippingCost;

@@ -4,7 +4,7 @@ import { DATA, log } from './util.mjs';
 import { priceCard, getFx } from './price.mjs';
 import { pptPrice, pptAvailable } from './ppt.mjs';
 import { parseTitle, verifySlabPhotos, identifySlabAI } from './judge.mjs';
-import { activeComps } from './sources/ebay.mjs';
+import { activeComps, ebayDetail } from './sources/ebay.mjs';
 
 // Slabs-only eBay mode. A graded card's condition is on the label and its value is the eBay
 // sold median for that exact grade, so most slabs are judged with no AI at all.
@@ -59,20 +59,34 @@ export async function judgeSlab(cfg, l) {
   const s = cfg.slabs;
   const m = cfg.money;
   const fx = await getFx();
-  if (/japan|japon|\bjp\b|jpn|korean|chinese|s-chinese|t-chinese/i.test(l.title)) return pass('non-English slab (no sold data yet)');
+  if (/korean|chinese|s-chinese|t-chinese/i.test(l.title)) return pass('Korean/Chinese slab (no sold data)');
+  let japanese = /japan|japon|\bjp\b|jpn/i.test(l.title);
+  if (japanese && !s.allowJapanese) return pass('Japanese slab (turned off)');
+  // Item specifics (grader/grade fields, all photos) only when the title lacks a grade: saves eBay calls.
+  if (!slabGrade(l)) l = await ebayDetail(cfg, l, fx);
   let grade = slabGrade(l);
-  let id = grade ? await identify(l.title) : null;
+  // Japanese numbering isn't in the free English catalog: take name + number straight from the title.
+  const jpId = t => {
+    const p = parseTitle(t);
+    const hash = t.match(/#\s?(\d{1,3})\b/);
+    const number = p.number || hash?.[1];
+    const after = hash ? t.slice(hash.index + hash[0].length).split(/\b(PSA|CGC|BGS|SGC|TAG|ACE)\b/i)[0].replace(/[^\p{L}\s'.-]/gu, ' ').trim().split(/\s+/).slice(0, 3).join(' ') : '';
+    const name = p.name || after;
+    return name && number ? { card: { name, number, setTotal: p.setTotal, variant: p.variant }, raw: null } : null;
+  };
+  let id = grade ? (japanese ? jpId(l.title) : await identify(l.title)) : null;
   let usedAI = false;
   // Title didn't say which card or grade: read the slab label from the photos instead.
   if (!grade || !id) {
     const ai = await identifySlabAI(cfg, l).catch(e => { log('slab id failed', e.message); return null; });
     usedAI = true;
     if (!ai?.isSingleSlab) return pass('not a single graded card', { stage: 2 });
-    if (ai.language !== 'en') return pass('non-English slab (no sold data yet)', { stage: 2 });
+    if (ai.language === 'other') return pass('Korean/Chinese slab (no sold data)', { stage: 2 });
+    if (ai.language === 'jp') { if (!s.allowJapanese) return pass('Japanese slab (turned off)', { stage: 2 }); japanese = true; }
     if (!grade && ai.grader && ai.grade) grade = `${ai.grader.toUpperCase()} ${ai.grade}`;
     if (!grade) return pass('no grade found', { stage: 2 });
     if (!id && ai.name && ai.number) {
-      id = await identify(`${ai.name} ${ai.number}`) || { card: { name: ai.name, number: ai.number, setTotal: Number(String(ai.number).split('/')[1]) || null, variant: 'unknown' }, raw: null };
+      id = (!japanese && await identify(`${ai.name} ${ai.number}`)) || { card: { name: ai.name, number: ai.number, setTotal: Number(String(ai.number).split('/')[1]) || null, variant: 'unknown' }, raw: null };
     }
     if (!id) return pass(`couldn't read the card from the photos either`, { stage: 2 });
   }
@@ -82,10 +96,12 @@ export async function judgeSlab(cfg, l) {
 
   const tax = (l.priceCad + (l.shippingCad || 0)) * m.buyerTaxOnline;
   const cost = l.priceCad + (l.shippingCad || 0) + tax;
-  const card = { ...id.card, grade };
+  const card = { ...id.card, grade, language: japanese ? 'jp' : 'en' };
   const raw = id.raw;
   // Free pre-screen: a slab can't be a steal if it already costs more than a generous multiple of the raw card.
-  if (raw) {
+  // Skip the ceiling for vintage and 1st Editions: their slabs are worth many times the cheap raw printing.
+  const vintage = /1st|first ed|\b(199\d|200\d)\b|wotc|base set|jungle|fossil|team rocket|gym|neo |shadowless/i.test(l.title);
+  if (raw && raw.cad >= 15 && !vintage) {
     const ceiling = raw.cad * (Number(num) >= 10 || grade === 'BGS 9.5' ? s.maxGemMultiple : s.maxNineMultiple);
     if (cost > ceiling) return pass(`priced above ${grade} ceiling (raw C$${raw.cad.toFixed(0)})`, { cost });
   }
@@ -93,7 +109,7 @@ export async function judgeSlab(cfg, l) {
   // than every other copy (or with room to offer/bid) spend a sold-price lookup.
   const isAuctionL = l.buyingOptions?.includes('AUCTION') && !l.buyingOptions?.includes('FIXED_PRICE');
   let comps = null;
-  try { comps = await activeComps(cfg, card, grade, l.id, fx); } catch (e) { log('active comps failed', e.message); }
+  try { comps = await activeComps(cfg, card, grade, l.id, fx, { japanese }); } catch (e) { log('active comps failed', e.message); }
   if (comps?.count >= s.minComps) {
     const beatsAll = cost <= comps.cheapest * (1 - s.minBelowCheapest);
     const offerRoom = l.buyingOptions?.includes('BEST_OFFER') && cost <= comps.cheapest * (1 + s.offerSlack);

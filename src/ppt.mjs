@@ -29,10 +29,10 @@ const gradeKey = g => {
 export async function pptPrice(card) {
   const cfg = loadConfig();
   if (!pptAvailable() || !card?.name) return null;
-  const key = `${card.name}|${card.number || ''}`;
+  const key = `${card.name}|${card.number || ''}|${card.language || 'en'}`;
   if (!cache.has(key)) {
     try {
-      const q = new URLSearchParams({ search: `${card.name} ${card.number ? String(card.number).split('/')[0] : ''}`.trim(), limit: '1', includeEbay: 'true' });
+      const q = new URLSearchParams({ search: `${card.name} ${card.number ? String(card.number).split('/')[0] : ''}`.trim(), limit: '1', includeEbay: 'true', ...(card.language === 'jp' ? { language: 'japanese' } : {}) });
       const res = await fetch(`${BASE}/cards?${q}`, { headers: { authorization: `Bearer ${cfg.pptApiKey}` } });
       const left = Number(res.headers.get('x-ratelimit-daily-remaining'));
       const reset = Number(res.headers.get('x-ratelimit-daily-reset'));

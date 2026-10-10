@@ -157,6 +157,17 @@ export async function judgeSlab(cfg, l) {
     const v = await verifySlabPhotos(cfg, l, `${card.name} ${card.number}`, grade).catch(e => ({ ok: true, note: `photo check skipped: ${e.message}`, cert: null }));
     if (!v.ok) return pass(`photo check failed: ${v.note}`, { cost, stage: 3 });
     summaryNote = v.note;
+    // Priced off other listings? Re-check them using the name read off the label, in case the title parse was off.
+    if (!sold.sales && v.cardName && v.cardName.toLowerCase() !== String(card.name).toLowerCase()) {
+      const c2 = await activeComps(cfg, { ...card, name: v.cardName }, grade, l.id, fx, { japanese }).catch(() => null);
+      if (c2?.count >= s.minComps) {
+        const m2 = c2.cheapest / (1 + m.buyerTaxOnline);
+        const r2 = m2 * (1 - m.ebaySellFee) - m.ebayOrderFee - s.resaleShipCad;
+        const p2 = r2 - cost, roi2 = p2 / cost;
+        const ok2 = (p2 >= good.minProfitCad && roi2 >= good.minRoi) || (action !== 'buy' && r2 / (1 + good.minRoi) > cost * 0.75);
+        if (!ok2) return pass(`re-priced as ${v.cardName}: ${c2.count} others listed from C$${c2.cheapest.toFixed(0)}, not a deal`, { cost, stage: 3 });
+      }
+    }
     if (grader === 'PSA') {
       const pc = await checkPsaCert(certFromListing(l) || v.cert, card, grade);
       if (pc.checked && !pc.ok) return pass(`cert check failed: ${pc.note}`, { cost, stage: 3 });
@@ -168,10 +179,10 @@ export async function judgeSlab(cfg, l) {
   const summary = tier === 'pass'
     ? `${grade} at C$${cost.toFixed(0)} all-in vs ~C$${market.toFixed(0)} (${sold.basis}).`
     : action === 'offer'
-    ? `${grade} listed at C$${l.priceCad.toFixed(0)}; it sells for ~C$${market.toFixed(0)}. An offer of C$${maxItem} makes it a deal.`
+    ? `${grade} listed at C$${l.priceCad.toFixed(0)}; ${sold.sales ? 'it sells for' : 'others are listed from'} ~C$${market.toFixed(0)}. An offer of C$${maxItem} makes it a deal.`
     : action === 'auction'
       ? `${grade} auction at C$${l.priceCad.toFixed(0)} with ${l.bids ?? 0} bids; worth bidding up to C$${maxItem}.`
-      : `${grade} at C$${cost.toFixed(0)} all-in vs ~C$${market.toFixed(0)} eBay sold median.`;
+      : `${grade} at C$${cost.toFixed(0)} all-in vs ~C$${market.toFixed(0)} (${sold.sales ? 'eBay sold median' : 'cheapest other listing, no sold data'}).`;
   const fullSummary = `${summary}${compsNote}${summaryNote ? ' ' + summaryNote : ''}`;
   log(`slab ${l.id}: ${grade} cost C$${cost.toFixed(0)} market C$${market.toFixed(0)} → ${tier} (${action})`);
   return {

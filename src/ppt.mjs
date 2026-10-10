@@ -3,7 +3,7 @@ import path from 'node:path';
 import { DATA, loadConfig, log } from './util.mjs';
 
 // PokemonPriceTracker: real eBay sold prices (ungraded and by grade). Free plan = 100 credits/day,
-// a lookup with eBay data costs ~2–3, so spend them only on finalists and slabs.
+// credits are per card returned (+1 each for eBay data), so ask for exactly one card: 2 credits a lookup.
 const BASE = 'https://www.pokemonpricetracker.com/api/v2';
 const usageFile = path.join(DATA, 'ppt-usage.json');
 const cache = new Map();
@@ -32,7 +32,7 @@ export async function pptPrice(card) {
   const key = `${card.name}|${card.number || ''}`;
   if (!cache.has(key)) {
     try {
-      const q = new URLSearchParams({ search: `${card.name} ${card.number ? String(card.number).split('/')[0] : ''}`.trim(), limit: '5', includeEbay: 'true' });
+      const q = new URLSearchParams({ search: `${card.name} ${card.number ? String(card.number).split('/')[0] : ''}`.trim(), limit: '1', includeEbay: 'true' });
       const res = await fetch(`${BASE}/cards?${q}`, { headers: { authorization: `Bearer ${cfg.pptApiKey}` } });
       const left = Number(res.headers.get('x-ratelimit-daily-remaining'));
       const reset = Number(res.headers.get('x-ratelimit-daily-reset'));

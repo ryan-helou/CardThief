@@ -55,7 +55,7 @@ Read every photo. Then fill in, honestly and conservatively:
 ## eBay slabs mode (current, set `"mode": "slabs"`)
 Mint watches eBay **graded Pokémon cards only**: new listings from Canadian sellers, plus auctions ending within the hour (any country except Asia). No AI unless something passes every check.
 - [ ] English slab (Japanese/Korean/Chinese skipped: no sold data yet).
-- [ ] Grader PSA, CGC, BGS, TAG, SGC or ACE, **grade 9 or higher** (from the title, else the seller's eBay grade fields).
+- [ ] Grader PSA, CGC, BGS, TAG, SGC or ACE, any grade (from the title, else the seller's eBay grade fields). The liquidity check below decides whether a grade sells.
 - [ ] Card identified (name + number, incl. PSA-label titles like "#199 CHARIZARD EX PSA 10").
 - [ ] Free ceiling check: skip if all-in already exceeds 12× the raw card (10 / BGS 9.5) or 4× (9).
 - [ ] Free eBay check: compare with the same card and grade for sale right now (Buy It Now, ships to Canada, all-in). Skip unless it's **≥15% below the cheapest other copy**, or takes Best Offer within 10% of it, or is an auction. Needs ≥2 other copies to apply.

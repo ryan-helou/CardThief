@@ -91,16 +91,18 @@ async function drain(cfg) {
     while (sonnetAt.length && sonnetAt[0] < hourAgo) sonnetAt.shift();
     if (judgedAt.length >= (cfg.maxTriagePerHour || cfg.maxJudgementsPerHour)) { log(`judge budget hit, ${queue.length} waiting`); return; }
     // Cheapest first: the best ROI tends to hide in the low-priced listings.
-    queue.sort((a, b) => a.priceCad - b.priceCad);
+    // Cheapest first, but $0–2 "placeholder" prices last: their real price is unknown.
+    const rank = x => (x.priceCad <= 2 ? 1e6 + x.priceCad : x.priceCad);
+    queue.sort((a, b) => rank(a) - rank(b));
     let l = queue.shift();
     judgedAt.push(Date.now());
     try {
+      // Kijiji pages are a cheap HTTP fetch; Marketplace pages need a browser, so they're opened only for Stage 3.
       if (l.source === 'kijiji') l = await kijijiDetail(l);
       if (l.source === 'ebay' && cfg.mode !== 'slabs') l = await ebayDetail(cfg, l, await getFx());
-      if (l.source === 'facebook') l = await facebookDetail(cfg, l);
       const r = cfg.mode === 'slabs' && l.source === 'ebay'
         ? await judgeSlab(cfg, l)
-        : await judge(cfg, l, { allowStage3: sonnetAt.length < cfg.maxJudgementsPerHour });
+        : await judge(cfg, l, { allowStage3: sonnetAt.length < cfg.maxJudgementsPerHour, detail: l.source === 'facebook' ? x => facebookDetail(cfg, x) : null });
       if (r.stage === 3) sonnetAt.push(Date.now());
       if (r.stage === 1) judgedAt.pop(); // priced from the title: no AI used, doesn't count toward the hourly cap
       seen.add(l.id); seen.save();

@@ -35,7 +35,7 @@
     ]
   },
   "facebook": {
-    "enabled": false,
+    "enabled": true,
     "everyMinutes": 25,
     "activeHours": [
       8,

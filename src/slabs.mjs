@@ -4,6 +4,7 @@ import { DATA, log } from './util.mjs';
 import { priceCard, getFx } from './price.mjs';
 import { pptPrice, pptAvailable } from './ppt.mjs';
 import { parseTitle, verifySlabPhotos } from './judge.mjs';
+import { activeComps } from './sources/ebay.mjs';
 
 // Slabs-only eBay mode. A graded card's condition is on the label and its value is the eBay
 // sold median for that exact grade, so most slabs are judged with no AI at all.
@@ -76,6 +77,16 @@ export async function judgeSlab(cfg, l) {
     const ceiling = raw.cad * (Number(num) >= 10 || grade === 'BGS 9.5' ? s.maxGemMultiple : s.maxNineMultiple);
     if (cost > ceiling) return pass(`priced above ${grade} ceiling (raw C$${raw.cad.toFixed(0)})`, { cost });
   }
+  // Free check against the same card and grade for sale right now. Only listings clearly cheaper
+  // than every other copy (or with room to offer/bid) spend a sold-price lookup.
+  const isAuctionL = l.buyingOptions?.includes('AUCTION') && !l.buyingOptions?.includes('FIXED_PRICE');
+  let comps = null;
+  try { comps = await activeComps(cfg, card, grade, l.id, fx); } catch (e) { log('active comps failed', e.message); }
+  if (comps?.count >= s.minComps) {
+    const beatsAll = cost <= comps.cheapest * (1 - s.minBelowCheapest);
+    const offerRoom = l.buyingOptions?.includes('BEST_OFFER') && cost <= comps.cheapest * (1 + s.offerSlack);
+    if (!beatsAll && !offerRoom && !isAuctionL) return pass(`C$${cost.toFixed(0)} all-in; ${comps.count} others listed from C$${comps.cheapest.toFixed(0)}`, { cost });
+  }
   if (!pptAvailable()) return pass('out of eBay sold-price lookups for today', { cost, retry: true });
   const sold = await gradePrice({ ...card, grade });
   if (!sold) return pass(`no eBay sold data for ${card.name} ${card.number} ${grade}`, { cost });
@@ -114,13 +125,14 @@ export async function judgeSlab(cfg, l) {
     if (!v.ok) return pass(`photo check failed: ${v.note}`, { cost, stage: 3 });
     summaryNote = v.note;
   }
+  const compsNote = comps?.count ? ` Cheapest other ${grade} for sale: C$${comps.cheapest.toFixed(0)} all-in (${comps.count} listed).` : '';
   const line = { label: `${card.name} ${card.number} ${grade}`, marketCad: +market.toFixed(2), netCad: +resale.toFixed(2), basis: `${sold.basis}, last sale ${String(sold.lastSale || '').slice(0, 10)}` };
   const summary = action === 'offer'
     ? `${grade} listed at C$${l.priceCad.toFixed(0)}; it sells for ~C$${market.toFixed(0)}. An offer of C$${maxItem} makes it a deal.`
     : action === 'auction'
       ? `${grade} auction at C$${l.priceCad.toFixed(0)} with ${l.bids ?? 0} bids; worth bidding up to C$${maxItem}.`
       : `${grade} at C$${cost.toFixed(0)} all-in vs ~C$${market.toFixed(0)} eBay sold median.`;
-  const fullSummary = summaryNote ? `${summary} ${summaryNote}` : summary;
+  const fullSummary = `${summary}${compsNote}${summaryNote ? ' ' + summaryNote : ''}`;
   log(`slab ${l.id}: ${grade} cost C$${cost.toFixed(0)} market C$${market.toFixed(0)} → ${tier} (${action})`);
   return {
     stage: tier === 'pass' ? 1 : 3, tier, action, price: l.priceCad, cost: showCost, resale, profit: showProfit, roi: showRoi, lines: [line], bulk: 0,

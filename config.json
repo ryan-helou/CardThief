@@ -89,7 +89,7 @@
       "SGC",
       "ACE"
     ],
-    "minGrade": 9,
+    "minGrade": 0,
     "minSales": 10,
     "maxDaysSinceSale": 90,
     "maxGemMultiple": 12,

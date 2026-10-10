@@ -13,16 +13,18 @@
     "marketplace": "EBAY_CA",
     "queries": [
       {
-        "q": "pokemon lot",
-        "filter": "deliveryCountry:CA"
+        "label": "Canadian slabs",
+        "q": "pokemon",
+        "categoryIds": "183454",
+        "filter": "conditionIds:{2750},itemLocationCountry:CA"
       },
       {
-        "q": "pokemon cards collection binder",
-        "filter": "deliveryCountry:CA"
-      },
-      {
-        "q": "pokemon card",
-        "filter": "itemLocationCountry:CA"
+        "label": "Slab auctions ending within the hour",
+        "q": "pokemon",
+        "categoryIds": "183454",
+        "filter": "conditionIds:{2750},deliveryCountry:CA,buyingOptions:{AUCTION}",
+        "sort": "endingSoonest",
+        "endWithinMin": 60
       }
     ]
   },
@@ -76,5 +78,23 @@
   "minPriceCad": 20,
   "triageModel": "haiku",
   "pptReserveCredits": 10,
-  "maxTriagePerHour": 60
+  "maxTriagePerHour": 60,
+  "mode": "slabs",
+  "slabs": {
+    "graders": [
+      "PSA",
+      "CGC",
+      "BGS",
+      "TAG",
+      "SGC"
+    ],
+    "minGrade": 9,
+    "minSales": 10,
+    "maxDaysSinceSale": 90,
+    "maxGemMultiple": 12,
+    "maxNineMultiple": 4,
+    "resaleShipCad": 12,
+    "maxBids": 1,
+    "minOfferRatio": 0.75
+  }
 }

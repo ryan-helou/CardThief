@@ -5,6 +5,7 @@ import { searchKijiji, kijijiDetail } from './sources/kijiji.mjs';
 import { searchEbay, ebayDetail, ebayReady } from './sources/ebay.mjs';
 import { sweepFacebook, facebookDetail, inActiveHours } from './sources/facebook.mjs';
 import { prefilter, judge, aiUsage } from './judge.mjs';
+import { judgeSlab } from './slabs.mjs';
 import { toDeal, sendDeal, heartbeat, retryPendingDeals } from './notify.mjs';
 import { getFx } from './price.mjs';
 import { distanceKm } from './geo.mjs';
@@ -95,7 +96,9 @@ async function drain(cfg) {
       if (l.source === 'kijiji') l = await kijijiDetail(l);
       if (l.source === 'ebay') l = await ebayDetail(cfg, l, await getFx());
       if (l.source === 'facebook') l = await facebookDetail(cfg, l);
-      const r = await judge(cfg, l, { allowStage3: sonnetAt.length < cfg.maxJudgementsPerHour });
+      const r = cfg.mode === 'slabs' && l.source === 'ebay'
+        ? await judgeSlab(cfg, l)
+        : await judge(cfg, l, { allowStage3: sonnetAt.length < cfg.maxJudgementsPerHour });
       if (r.stage === 3) sonnetAt.push(Date.now());
       if (r.stage === 1) judgedAt.pop(); // priced from the title: no AI used, doesn't count toward the hourly cap
       seen.add(l.id); seen.save();

@@ -56,6 +56,8 @@ export function toDeal(l, r) {
     hiddenUpside: r.ident.hiddenUpside || '',
     askSeller: r.ident.askSeller || '',
     offer: r.offer,
+    action: r.action || 'buy',
+    grade: r.ident.grade || null,
     draft: l.source === 'ebay' ? '' : draftMessage(l, r),
     bids: l.bids ?? null,
     endsAt: l.endsAt ?? null,

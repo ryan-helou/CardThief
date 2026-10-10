@@ -91,7 +91,7 @@ export async function priceCard(ident, { strict = false } = {}) {
     for (const c of list.slice(0, 6)) {
       const full = await card(c.id).catch(() => null);
       const p = full && pickPrice(full, ident.variant, rates);
-      if (p) priced.push({ id: full.id, label: `${full.name} ${full.set?.name} ${full.localId}`, ...p });
+      if (p) priced.push({ id: full.id, name: full.name, label: `${full.name} ${full.set?.name} ${full.localId}`, ...p });
     }
     if (!priced.length) return null;
     priced.sort((a, b) => a.cad - b.cad);

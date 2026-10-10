@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process';
-import { loadConfig, log } from './util.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { DATA, loadConfig, log } from './util.mjs';
 
 // Deals go to the CardThief app (Railway), which stores them and pushes to Ryan's phone.
 // The Mac also shows a banner so a deal is visible even when the phone is away.
@@ -61,14 +63,30 @@ export function toDeal(l, r) {
   };
 }
 
+// Deals that couldn't reach the app (network or DNS hiccup) wait here and are retried every loop,
+// so an outage delays an alert instead of losing it.
+const pendingFile = path.join(DATA, 'pending-deals.json');
+const readPending = () => { try { return JSON.parse(fs.readFileSync(pendingFile, 'utf8')); } catch { return []; } };
+
 export async function sendDeal(deal) {
+  macBanner(`${deal.tier === 'steal' ? '🔥 Steal' : 'Good deal'} +C$${Math.round(deal.profit)}`, `C$${Math.round(deal.cost)} all-in · ${deal.title}`);
   try {
     const r = await app('/api/agent/deal', deal);
     if (r) log('app deal', deal.id, r.isNew ? 'new' : 'updated', JSON.stringify(r.push));
   } catch (e) {
-    log('app deal failed', e.message);
+    log('app deal failed, will retry', deal.id, e.message);
+    fs.writeFileSync(pendingFile, JSON.stringify([...readPending().filter(d => d.id !== deal.id), deal]));
   }
-  macBanner(`${deal.tier === 'steal' ? '🔥 Steal' : 'Good deal'} +$${Math.round(deal.profit)}`, `$${deal.price} · ${deal.title}`);
+}
+
+export async function retryPendingDeals() {
+  const pending = readPending();
+  if (!pending.length) return;
+  const left = [];
+  for (const d of pending) {
+    try { await app('/api/agent/deal', d); log('app deal delivered late', d.id); } catch { left.push(d); }
+  }
+  fs.writeFileSync(pendingFile, JSON.stringify(left));
 }
 
 export async function heartbeat(h) {

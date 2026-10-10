@@ -157,7 +157,9 @@ export async function judgeSlab(cfg, l) {
   }
   const compsNote = comps?.count ? ` Cheapest other ${grade} for sale: C$${comps.cheapest.toFixed(0)} all-in (${comps.count} listed).` : '';
   const line = { label: `${card.name} ${card.number} ${grade}`, marketCad: +market.toFixed(2), netCad: +resale.toFixed(2), basis: `${sold.basis}, last sale ${String(sold.lastSale || '').slice(0, 10)}` };
-  const summary = action === 'offer'
+  const summary = tier === 'pass'
+    ? `${grade} at C$${cost.toFixed(0)} all-in vs ~C$${market.toFixed(0)} (${sold.basis}).`
+    : action === 'offer'
     ? `${grade} listed at C$${l.priceCad.toFixed(0)}; it sells for ~C$${market.toFixed(0)}. An offer of C$${maxItem} makes it a deal.`
     : action === 'auction'
       ? `${grade} auction at C$${l.priceCad.toFixed(0)} with ${l.bids ?? 0} bids; worth bidding up to C$${maxItem}.`

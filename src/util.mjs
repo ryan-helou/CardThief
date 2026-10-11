@@ -1,4 +1,20 @@
 import fs from 'node:fs';
+import dns from 'node:dns';
+
+// macOS's resolver sometimes caches a failure for a host (seen with *.up.railway.app and
+// api.psacard.com) while real DNS answers fine. Fall back to asking DNS directly.
+const systemLookup = dns.lookup;
+dns.lookup = function (host, opts, cb) {
+  if (typeof opts === 'function') { cb = opts; opts = {}; }
+  systemLookup.call(dns, host, opts, (err, address, family) => {
+    if (!err || !['ENOTFOUND', 'EAI_AGAIN'].includes(err.code)) return cb(err, address, family);
+    dns.resolve4(host, (e2, addrs) => {
+      if (e2 || !addrs?.length) return cb(err, address, family);
+      if (opts && opts.all) return cb(null, addrs.map(a => ({ address: a, family: 4 })));
+      cb(null, addrs[0], 4);
+    });
+  });
+};
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 

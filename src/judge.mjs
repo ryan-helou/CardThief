@@ -25,7 +25,7 @@ export function prefilter(cfg, l) {
   // eBay from outside Canada: only lots survive the 20–35% cross-border costs.
   const slabs = cfg.mode === 'slabs';
   if (l.source === 'ebay' && !slabs && ['JP', 'CN', 'KR', 'HK', 'TW'].includes(l.country)) return 'ships from Asia';
-  if (l.source === 'ebay' && l.country !== 'CA' && !auction && !isLot(l.title) && !(slabs && l.buyingOptions?.includes('BEST_OFFER'))) return 'foreign eBay single';
+  if (l.source === 'ebay' && l.country !== 'CA' && !auction && !isLot(l.title) && !slabs) return 'foreign eBay single';
   return null;
 }
 

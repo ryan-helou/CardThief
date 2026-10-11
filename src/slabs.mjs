@@ -27,7 +27,7 @@ const cache = fs.existsSync(cacheFile) ? JSON.parse(fs.readFileSync(cacheFile, '
 async function gradePrice(card) {
   const key = `${card.name}|${card.number}|${card.grade}`.toLowerCase();
   const hit = cache[key];
-  if (hit && Date.now() - hit.at < 24 * 3600e3) return hit.p;
+  if (hit && Date.now() - hit.at < 6 * 3600e3) return hit.p;
   const p = await pptPrice(card);
   cache[key] = { at: Date.now(), p };
   fs.writeFileSync(cacheFile, JSON.stringify(cache));

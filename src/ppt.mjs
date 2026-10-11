@@ -3,7 +3,8 @@ import path from 'node:path';
 import { DATA, loadConfig, log } from './util.mjs';
 
 // PokemonPriceTracker: real eBay sold prices (ungraded and by grade). Free plan = 100 credits/day,
-// credits are per card returned (+1 each for eBay data), so ask for exactly one card: 2 credits a lookup.
+// credits are per card returned (+1 each for eBay data). On the API plan (20k/day) we ask for the top 3
+// matches (~6 credits) so the strict identity check below can pick the exact card.
 const BASE = 'https://www.pokemonpricetracker.com/api/v2';
 const usageFile = path.join(DATA, 'ppt-usage.json');
 const cache = new Map();
@@ -32,7 +33,7 @@ export async function pptPrice(card) {
   const key = `${card.name}|${card.number || ''}|${card.language || 'en'}`;
   if (!cache.has(key)) {
     try {
-      const q = new URLSearchParams({ search: `${card.name} ${card.number ? String(card.number).split('/')[0] : ''}`.trim(), limit: '1', includeEbay: 'true', ...(card.language === 'jp' ? { language: 'japanese' } : {}) });
+      const q = new URLSearchParams({ search: `${card.name} ${card.number ? String(card.number).split('/')[0] : ''}`.trim(), limit: '3', includeEbay: 'true', ...(card.language === 'jp' ? { language: 'japanese' } : {}) });
       const res = await fetch(`${BASE}/cards?${q}`, { headers: { authorization: `Bearer ${cfg.pptApiKey}` } });
       const left = Number(res.headers.get('x-ratelimit-daily-remaining'));
       const reset = Number(res.headers.get('x-ratelimit-daily-reset'));

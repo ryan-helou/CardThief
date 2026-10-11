@@ -9,7 +9,7 @@
   },
   "ebay": {
     "enabled": true,
-    "everyMinutes": 2,
+    "everyMinutes": 1,
     "marketplace": "EBAY_CA",
     "queries": [
       {
@@ -17,6 +17,12 @@
         "q": "pokemon",
         "categoryIds": "183454",
         "filter": "conditionIds:{2750},itemLocationCountry:CA"
+      },
+      {
+        "label": "All slabs shipping to Canada (Buy It Now)",
+        "q": "pokemon",
+        "categoryIds": "183454",
+        "filter": "conditionIds:{2750},deliveryCountry:CA,buyingOptions:{FIXED_PRICE}"
       },
       {
         "label": "Slab auctions ending within the hour",
@@ -88,7 +94,7 @@
   "minPriceCad": 0,
   "triageModel": "haiku",
   "pptReserveCredits": 200,
-  "maxTriagePerHour": 60,
+  "maxTriagePerHour": 90,
   "mode": "slabs",
   "slabs": {
     "graders": [
@@ -113,6 +119,6 @@
     "allowJapanese": true,
     "maxEbayCallsPerDay": 4500
   },
-  "maxQueue": 300,
+  "maxQueue": 600,
   "pptMinCad": 3
 }

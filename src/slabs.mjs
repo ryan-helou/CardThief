@@ -106,9 +106,21 @@ export async function judgeSlab(cfg, l) {
     const ceiling = raw.cad * (Number(num) >= 10 || grade === 'BGS 9.5' ? s.maxGemMultiple : s.maxNineMultiple);
     if (cost > ceiling) return pass(`priced above ${grade} ceiling (raw C$${raw.cad.toFixed(0)})`, { cost });
   }
-  // Free check against the same card and grade for sale right now. Only listings clearly cheaper
-  // than every other copy (or with room to offer/bid) spend a sold-price lookup.
   const isAuctionL = l.buyingOptions?.includes('AUCTION') && !l.buyingOptions?.includes('FIXED_PRICE');
+  // Value first (sold-price lookups are plentiful on the paid plan); eBay "other copies" searches
+  // count against eBay's 5,000/day, so they only run for slabs that could be a deal.
+  // Asking prices are not values: a Squawkabilly ex PSA 10 was "listed from C$96" while it actually
+  // sells for ~US$26 (Collectr, 2026-10-10). Only real sales can make an alert.
+  let sold = pptAvailable() ? await gradePrice({ ...card, grade }) : null;
+  if (!sold) return pass(`no eBay sold data for ${card.name} ${card.number} ${grade}`, { cost });
+  {
+    const quickResale = sold.usd * fx.USD * (1 - m.ebaySellFee) - m.ebayOrderFee - s.resaleShipCad;
+    const roomForOffer = l.buyingOptions?.includes('BEST_OFFER') && quickResale / (1 + cfg.deal.good.minRoi) >= cost * s.minOfferRatio;
+    const roomForBid = isAuctionL && quickResale / (1 + cfg.deal.good.minRoi) > cost;
+    if (quickResale - cost < cfg.deal.good.minProfitCad && !roomForOffer && !roomForBid) {
+      return pass(`${grade} at C$${cost.toFixed(0)} all-in vs ~C$${(sold.usd * fx.USD).toFixed(0)} (${sold.basis}).`, { cost, resale: quickResale, profit: quickResale - cost, roi: (quickResale - cost) / cost });
+    }
+  }
   let comps = null;
   try { comps = await activeComps(cfg, card, grade, l.id, fx, { japanese }); } catch (e) { log('active comps failed', e.message); }
   if (comps?.count >= s.minComps) {
@@ -116,12 +128,6 @@ export async function judgeSlab(cfg, l) {
     const offerRoom = l.buyingOptions?.includes('BEST_OFFER') && cost <= comps.cheapest * (1 + s.offerSlack);
     if (!beatsAll && !offerRoom && !isAuctionL) return pass(`C$${cost.toFixed(0)} all-in; ${comps.count} others listed from C$${comps.cheapest.toFixed(0)}`, { cost });
   }
-  // Value: eBay sold median for that grade; if there's none (or no lookups left today),
-  // fall back to the cheapest other copy for sale, minus the tax that's baked into it.
-  let sold = pptAvailable() ? await gradePrice({ ...card, grade }) : null;
-  // Asking prices are not values: a Squawkabilly ex PSA 10 was "listed from C$96" while it actually
-  // sells for ~US$26 (Collectr, 2026-10-10). Only real sales can make an alert.
-  if (!sold) return pass(`no eBay sold data for ${card.name} ${card.number} ${grade}${comps?.count ? ` (others listed from C$${comps.cheapest.toFixed(0)}, asking only)` : ''}`, { cost });
 
   let market = sold.usd * fx.USD;
   // Sanity check: a sold median far above every copy for sale usually means the lookup matched the

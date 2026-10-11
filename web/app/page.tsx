@@ -1,55 +1,13 @@
 import { DealControls } from "@/components/DealControls";
 import { PushButton } from "@/components/PushButton";
 import { listDeals, loadHeartbeat } from "@/lib/db";
-import type { DealRow, Heartbeat, Status } from "@/lib/types";
+import type { DealRow, Status } from "@/lib/types";
+import { Empty, NearMisses, RulesView, StatTiles, StatusHeader, TodayView, ago, money } from "@/components/Dashboard";
 
 export const dynamic = "force-dynamic";
 
-const money = (n: number | null | undefined) =>
-  n == null ? "—" : `${n < 0 ? "−" : ""}C$${Math.abs(Math.round(n)).toLocaleString("en-CA")}`;
-
-function ago(iso?: string | null): string {
-  if (!iso) return "never";
-  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (m < 1) return "now";
-  if (m < 60) return `${m}m`;
-  const h = Math.round(m / 60);
-  return h < 48 ? `${h}h` : `${Math.round(h / 24)}d`;
-}
-
-function Status({ hb }: { hb: Heartbeat | null }) {
-  if (!hb || Date.now() - new Date(hb.at).getTime() > 15 * 60000) {
-    return (
-      <p className="rounded-lg bg-[var(--warn-bg)] px-3 py-2 text-sm text-[var(--warn)]">
-        Bot quiet {hb ? `for ${ago(hb.at)}` : ""}. The Mac may be asleep or closed.
-      </p>
-    );
-  }
-  return (
-    <p className="text-sm text-[var(--ink-3)]">
-      <span className="text-[var(--good)]">●</span> Hunting
-      {hb.queue ? ` · ${hb.queue} to check` : ""}
-      {typeof hb.judgedToday === "number" ? ` · ${hb.judgedToday} checked today` : ""}
-    </p>
-  );
-}
-
-function Tally({ rows }: { rows: DealRow[] }) {
-  const bought = rows.filter((r) => r.status === "bought" || r.status === "sold");
-  if (!bought.length) return null;
-  const spent = bought.reduce((a, r) => a + (r.boughtFor ?? r.deal.cost), 0);
-  const made = rows
-    .filter((r) => r.status === "sold")
-    .reduce((a, r) => a + (r.soldFor ?? 0) - (r.boughtFor ?? r.deal.cost), 0);
-  return (
-    <p className="text-sm num">
-      Spent {money(spent)} · Profit <span className={made >= 0 ? "text-[var(--good)]" : "text-[var(--steal)]"}>{money(made)}</span>
-    </p>
-  );
-}
-
 // One tap to the real sales for that exact card: asking prices can run 3–4× what cards actually sell for.
-const soldLinks = (q: string) => [
+const soldLinks = (q: string): { label: string; href: string }[] => [
   { label: "eBay sold", href: `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}&LH_Sold=1&LH_Complete=1&_sop=13` },
   { label: "130point", href: `https://130point.com/sales/?search=${encodeURIComponent(q)}` },
   { label: "PriceCharting", href: `https://www.pricecharting.com/search-products?q=${encodeURIComponent(q)}&type=prices` },
@@ -161,60 +119,120 @@ function DealCard({ r }: { r: DealRow }) {
 }
 
 const SECTIONS: { status: Status; title: string; folded?: boolean }[] = [
-  { status: "new", title: "Deals" },
-  { status: "bought", title: "Bought" },
+  { status: "new", title: "Open deals" },
+  { status: "bought", title: "Bought, to resell" },
   { status: "sold", title: "Sold", folded: true },
   { status: "passed", title: "Passed", folded: true },
 ];
 
-export default async function Home() {
+const TABS = [
+  { id: "deals", label: "Deals", icon: "M12 2l2.9 6.9L22 10l-5.5 4.7L18.2 22 12 18.3 5.8 22l1.7-7.3L2 10l7.1-1.1z" },
+  { id: "misses", label: "Near misses", icon: "M12 3a9 9 0 100 18 9 9 0 000-18zm0 4v5l3 3" },
+  { id: "today", label: "Today", icon: "M4 20V10m6 10V4m6 16v-7m4 7H2" },
+  { id: "rules", label: "Rules", icon: "M4 6h16M4 12h16M4 18h10" },
+] as const;
+
+function Tally({ rows }: { rows: DealRow[] }) {
+  const bought = rows.filter((r) => r.status === "bought" || r.status === "sold");
+  if (!bought.length) return null;
+  const spent = bought.reduce((a, r) => a + (r.boughtFor ?? r.deal.cost), 0);
+  const sold = rows.filter((r) => r.status === "sold");
+  const made = sold.reduce((a, r) => a + (r.soldFor ?? 0) - (r.boughtFor ?? r.deal.cost), 0);
+  const holding = rows.filter((r) => r.status === "bought");
+  const expected = holding.reduce((a, r) => a + r.deal.resale - (r.boughtFor ?? r.deal.cost), 0);
+  return (
+    <section className="grid grid-cols-3 gap-2 rounded-2xl border border-[var(--rule)] bg-[var(--surface)] p-3 text-center num">
+      <div><p className="font-semibold">{money(spent)}</p><p className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">Spent</p></div>
+      <div><p className={`font-semibold ${made >= 0 ? "text-[var(--good)]" : "text-[var(--steal)]"}`}>{money(made)}</p><p className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">Profit made</p></div>
+      <div><p className="font-semibold">{money(expected)}</p><p className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">Still to sell</p></div>
+    </section>
+  );
+}
+
+export default async function Home({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const { tab = "deals" } = await searchParams;
   const [rows, hb] = await Promise.all([listDeals(), loadHeartbeat()]);
+  const open = rows.filter((r) => r.status === "new").length;
+  const soldRows = rows.filter((r) => r.status === "sold");
+  const profit = soldRows.length ? soldRows.reduce((a, r) => a + (r.soldFor ?? 0) - (r.boughtFor ?? r.deal.cost), 0) : null;
 
   return (
-    <main className="mx-auto max-w-xl px-4 pb-16 pt-[max(1.25rem,env(safe-area-inset-top))]">
-      <header className="mb-4 space-y-1.5">
-        <h1 className="text-xl font-semibold">Mint</h1>
-        <Status hb={hb} />
-        <Tally rows={rows} />
-        <PushButton />
+    <main className="mx-auto max-w-xl px-4 pb-28 pt-[max(1.25rem,env(safe-area-inset-top))]">
+      <header className="mb-3 flex items-baseline justify-between">
+        <h1 className="text-2xl font-semibold tracking-tight">Mint</h1>
+        <span className="text-xs text-[var(--ink-3)]">Pokémon deal hunter</span>
       </header>
 
-      {rows.length === 0 && (
-        <p className="rounded-xl border border-dashed border-[var(--rule)] p-5 text-center text-sm text-[var(--ink-3)]">
-          No deals yet. Expect a few a week.
-        </p>
-      )}
+      <div className="space-y-3">
+        <StatusHeader hb={hb} />
+        <StatTiles hb={hb} deals={open} profit={profit} />
+        <PushButton />
+      </div>
 
-      {SECTIONS.map(({ status, title, folded }) => {
-        const list = rows.filter((r) => r.status === status);
-        if (!list.length) return null;
-        const body = (
-          <div className="mt-2 space-y-2">
-            {list.map((r) => (
-              <DealCard key={r.deal.id} r={r} />
-            ))}
-          </div>
-        );
-        return (
-          <section key={status} className="mb-6">
-            {folded ? (
-              <details>
-                <summary className="cursor-pointer text-sm font-semibold text-[var(--ink-3)]">
-                  {title} ({list.length})
-                </summary>
-                {body}
-              </details>
-            ) : (
-              <>
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">
-                  {title} ({list.length})
-                </h2>
-                {body}
-              </>
+      <div className="mt-5">
+        {tab === "deals" && (
+          <div className="space-y-5">
+            <Tally rows={rows} />
+            {rows.length === 0 && <Empty text="No deals yet. Steals are rare: expect a few a week, not a few an hour." />}
+            {rows.length > 0 && open === 0 && (
+              <p className="px-1 text-sm text-[var(--ink-3)]">No open deals right now. See <a className="text-[var(--accent)]" href="?tab=misses">near misses</a> for what came close.</p>
             )}
-          </section>
-        );
-      })}
+            {SECTIONS.map(({ status, title, folded }) => {
+              const list = rows.filter((r) => r.status === status);
+              if (!list.length) return null;
+              const body = (
+                <div className="mt-2 space-y-2">
+                  {list.map((r) => (
+                    <DealCard key={r.deal.id} r={r} />
+                  ))}
+                </div>
+              );
+              return (
+                <section key={status}>
+                  {folded ? (
+                    <details>
+                      <summary className="cursor-pointer text-sm font-semibold text-[var(--ink-3)]">
+                        {title} ({list.length})
+                      </summary>
+                      {body}
+                    </details>
+                  ) : (
+                    <>
+                      <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">
+                        {title} ({list.length})
+                      </h2>
+                      {body}
+                    </>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        )}
+        {tab === "misses" && <NearMisses items={hb?.nearMisses ?? []} soldLinks={soldLinks} />}
+        {tab === "today" && <TodayView hb={hb} />}
+        {tab === "rules" && <RulesView hb={hb} />}
+      </div>
+
+      {/* Fixed, not sticky: sticky bottom bars strand mid-screen in an installed iOS web app. */}
+      <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-[var(--rule)] bg-[var(--surface)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+        <ul className="mx-auto grid max-w-xl grid-cols-4">
+          {TABS.map((t) => {
+            const on = tab === t.id;
+            return (
+              <li key={t.id}>
+                <a href={`?tab=${t.id}`} className={`relative flex flex-col items-center gap-0.5 py-2.5 text-[11px] ${on ? "font-semibold text-[var(--accent)]" : "text-[var(--ink-3)]"}`}>
+                  <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d={t.icon} />
+                  </svg>
+                  {t.label}
+                  {t.id === "deals" && open > 0 && <span className="absolute left-1/2 top-1.5 ml-2 rounded-full bg-[var(--steal)] px-1.5 text-[10px] font-semibold text-white">{open}</span>}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
     </main>
   );
 }

@@ -57,7 +57,31 @@ export interface DealRow {
   updatedAt: string;
 }
 
-export interface Heartbeat {
+export interface Slim {
+  at: string; source: string; title: string; url: string; photo: string | null;
+  tier: string; stage: number; price: number | null; profit: number; roi: number; why: string;
+}
+
+export interface Report {
+  today?: {
+    found: number; skipped: number; judged: number; deals: number;
+    stages: Record<string, number>;
+    bySource: Record<string, { found: number; skipped: number; judged: number; deals: number }>;
+    reasons: Record<string, number>;
+  };
+  week?: { day: string; found: number; judged: number; deals: number }[];
+  nearMisses?: Slim[];
+  recent?: Slim[];
+  budgets?: { pptLeft: number; pptMax: number; ebayCalls: number; ebayMax: number; messages: number; messagesMax: number };
+  sources?: Record<string, { on: boolean; every?: number; mode?: string; hours?: number[]; active?: boolean }>;
+  rules?: Record<string, unknown> & {
+    steal?: { minProfitCad: number; minRoi: number }; good?: { minProfitCad: number; minRoi: number };
+  };
+  queueBySource?: Record<string, number>;
+  startedAt?: string;
+}
+
+export interface Heartbeat extends Report {
   at: string;
   kijiji?: string; // last successful poll
   ebay?: string | null;

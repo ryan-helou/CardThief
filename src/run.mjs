@@ -10,6 +10,7 @@ import { toDeal, sendDeal, heartbeat, retryPendingDeals } from './notify.mjs';
 import { getFx } from './price.mjs';
 import { distanceKm } from './geo.mjs';
 import { processOutbox } from './outbox.mjs';
+import { buildReport } from './report.mjs';
 
 const ONCE = process.argv.includes('--once');
 const seen = new Seen('seen');
@@ -18,6 +19,7 @@ const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, '
 const saveState = () => fs.writeFileSync(statePath, JSON.stringify(state, null, 1));
 
 const queue = [];
+const startedAt = new Date().toISOString();
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
 const stats = { day: today(), judged: 0, deals: 0, kijiji: null, ebay: null, facebook: null, lastError: null };
 const judgedAt = []; // any AI check (Haiku or Sonnet)
@@ -79,7 +81,11 @@ async function pollFacebook(cfg) {
 }
 
 // Check in with the app; the app calls the bot "quiet" after 15 minutes without one.
-const beat = c => heartbeat({ kijiji: stats.kijiji, facebook: c.facebook?.enabled ? stats.facebook : null, ebay: ebayReady(c) ? stats.ebay : null, queue: queue.length, judgedToday: stats.judged, dealsToday: stats.deals, lastError: stats.lastError });
+const beat = c => heartbeat(buildReport(c, {
+  kijiji: stats.kijiji, facebook: c.facebook?.enabled ? stats.facebook : null, ebay: ebayReady(c) ? stats.ebay : null,
+  queue: queue.length, queueBySource: queue.reduce((a, x) => ({ ...a, [x.source]: (a[x.source] || 0) + 1 }), {}),
+  judgedToday: stats.judged, dealsToday: stats.deals, lastError: stats.lastError, startedAt,
+}));
 
 // Deals go stale in hours, so when more arrives than Mint can check, keep the newest
 // and drop the rest (unseen, so a relisting can come back). Marketplace/Kijiji are kept first: they're the best source.
@@ -122,7 +128,7 @@ async function drain(cfg) {
       if (r.stage === 1) judgedAt.pop(); // priced from the title: no AI used, doesn't count toward the hourly cap
       seen.add(l.id); seen.save();
       stats.judged++;
-      const rec = { at: new Date().toISOString(), stage: r.stage, aiCalls: aiUsage.calls, aiUsd: +aiUsage.usd.toFixed(4), id: l.id, url: l.url, title: l.title, price: l.priceCad, tier: r.tier, profit: +r.profit.toFixed(2), roi: +r.roi.toFixed(2), resale: +r.resale.toFixed(2), kind: r.ident.kind, fakeRisk: r.ident.fakeRisk, lines: r.lines, summary: r.ident.summary, askSeller: r.ident.askSeller };
+      const rec = { at: new Date().toISOString(), photo: l.images?.[0] || null, stage: r.stage, aiCalls: aiUsage.calls, aiUsd: +aiUsage.usd.toFixed(4), id: l.id, url: l.url, title: l.title, price: l.priceCad, tier: r.tier, profit: +r.profit.toFixed(2), roi: +r.roi.toFixed(2), resale: +r.resale.toFixed(2), kind: r.ident.kind, fakeRisk: r.ident.fakeRisk, lines: r.lines, summary: r.ident.summary, askSeller: r.ident.askSeller };
       appendJsonl('judged', rec);
       log(`${r.tier.toUpperCase().padEnd(5)} s${r.stage} ${l.id} $${l.priceCad} → profit $${r.profit.toFixed(0)} (${Math.round(r.roi * 100)}%) ${l.title}`);
       if (r.tier !== 'pass') {

@@ -48,6 +48,32 @@ function Tally({ rows }: { rows: DealRow[] }) {
   );
 }
 
+// One tap to the real sales for that exact card: asking prices can run 3–4× what cards actually sell for.
+const soldLinks = (q: string) => [
+  { label: "eBay sold", href: `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}&LH_Sold=1&LH_Complete=1&_sop=13` },
+  { label: "130point", href: `https://130point.com/sales/?search=${encodeURIComponent(q)}` },
+  { label: "PriceCharting", href: `https://www.pricecharting.com/search-products?q=${encodeURIComponent(q)}&type=prices` },
+];
+
+function SoldCheck({ queries }: { queries: string[] }) {
+  if (!queries.length) return null;
+  return (
+    <div className="mt-2 rounded-lg bg-[var(--surface-2)] px-3 py-2 text-xs">
+      <p className="font-medium text-[var(--ink-2)]">Check sold prices before buying</p>
+      {queries.map((q) => (
+        <p key={q} className="mt-1 flex flex-wrap items-baseline gap-x-2">
+          <span className="text-[var(--ink-3)]">{q}:</span>
+          {soldLinks(q).map((x) => (
+            <a key={x.label} href={x.href} target="_blank" rel="noreferrer" className="font-medium text-[var(--accent)] underline-offset-2 hover:underline">
+              {x.label}
+            </a>
+          ))}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function DealCard({ r }: { r: DealRow }) {
   const d = r.deal;
   const steal = d.tier === "steal";
@@ -95,6 +121,7 @@ function DealCard({ r }: { r: DealRow }) {
 
       {!quiet && (
         <>
+          <SoldCheck queries={d.compsQueries ?? d.lines.slice(0, 3).map((x) => x.label)} />
           {d.fakeRisk && d.fakeRisk !== "low" && (
             <p className="mt-2 text-xs text-[var(--warn)]">⚠ Fake risk {d.fakeRisk}{d.fakeReasons ? `: ${d.fakeReasons}` : ""}</p>
           )}

@@ -56,6 +56,9 @@ export function toDeal(l, r) {
     hiddenUpside: r.ident.hiddenUpside || '',
     askSeller: r.ident.askSeller || '',
     offer: r.offer,
+    // What to search for sold prices: the slab itself, or a lot's 3 most valuable cards.
+    compsQueries: [...r.lines].sort((a, b) => b.marketCad - a.marketCad).slice(0, 3)
+      .map(x => `${x.label.replace(/^\d+×\s*/, '')}${/japan|japon|\bjp\b|jpn/i.test(l.title) ? ' japanese' : ''}`),
     action: r.action || 'buy',
     grade: r.ident.grade || null,
     draft: l.source === 'ebay' ? '' : draftMessage(l, r),

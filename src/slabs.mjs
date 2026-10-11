@@ -123,7 +123,17 @@ export async function judgeSlab(cfg, l) {
   // sells for ~US$26 (Collectr, 2026-10-10). Only real sales can make an alert.
   if (!sold) return pass(`no eBay sold data for ${card.name} ${card.number} ${grade}${comps?.count ? ` (others listed from C$${comps.cheapest.toFixed(0)}, asking only)` : ''}`, { cost });
 
-  const market = sold.usd * fx.USD;
+  let market = sold.usd * fx.USD;
+  // Sanity check: a sold median far above every copy for sale usually means the lookup matched the
+  // wrong card (a 25th Anniversary Pikachu PSA 10 came back at C$1,138 while bidding sat at C$50).
+  if (comps?.count >= s.minComps && market > comps.cheapest * 2) {
+    log(`slab ${l.id}: sold median C$${market.toFixed(0)} vs cheapest listing C$${comps.cheapest.toFixed(0)}, capping`);
+    market = comps.cheapest / (1 + m.buyerTaxOnline);
+    sold = { ...sold, basis: `${sold.basis}, capped at cheapest other listing (median looked wrong)` };
+  }
+  if ((sold.sales ?? 0) < 5 && (!comps || comps.count < s.minComps)) {
+    return pass(`too little sold data to trust (${sold.sales} sales) and no other copies to compare`, { cost });
+  }
   const resale = market * (1 - m.ebaySellFee) - m.ebayOrderFee - s.resaleShipCad;
   const profit = resale - cost;
   const roi = profit / cost;
@@ -138,7 +148,9 @@ export async function judgeSlab(cfg, l) {
   const isAuction = l.buyingOptions?.includes('AUCTION') && !l.buyingOptions?.includes('FIXED_PRICE');
   if (isAuction) {
     action = 'auction';
-    if (tier === 'pass' && maxItem > l.priceCad * 1.1 && (l.bids ?? 0) <= s.maxBids) tier = 'good';
+    // A busy auction's current bid says nothing about where it will end.
+    if ((l.bids ?? 0) > s.maxBids) return pass(`auction already has ${l.bids} bids`, { cost });
+    if (tier === 'pass' && maxItem > l.priceCad * 1.1) tier = 'good';
   } else if (tier === 'pass' && l.buyingOptions?.includes('BEST_OFFER') && maxItem >= l.priceCad * s.minOfferRatio) {
     action = 'offer';
     tier = 'good';

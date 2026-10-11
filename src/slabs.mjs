@@ -137,6 +137,11 @@ export async function judgeSlab(cfg, l) {
     market = comps.cheapest / (1 + m.buyerTaxOnline);
     sold = { ...sold, basis: `${sold.basis}, capped at cheapest other listing (median looked wrong)` };
   }
+  // Thin sold data must be backed by the live market: a JP 1st Ed M Tyranitar EX PSA 10 showed
+  // US$418 from 5 sales (likely another printing) while it really sells for ~US$150 (PriceCharting).
+  if ((sold.sales ?? 0) < (s.minSalesAlone ?? 20) && !(comps?.count >= s.minComps && market <= comps.cheapest * 1.5)) {
+    return pass(`only ${sold.sales} sales and the live listings don't back up C$${market.toFixed(0)}`, { cost });
+  }
   if ((sold.sales ?? 0) < 5 && (!comps || comps.count < s.minComps)) {
     return pass(`too little sold data to trust (${sold.sales} sales) and no other copies to compare`, { cost });
   }

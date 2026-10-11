@@ -11,7 +11,7 @@ const cache = new Map();
 function remaining() {
   try {
     const u = JSON.parse(fs.readFileSync(usageFile, 'utf8'));
-    return Date.now() < u.resetAt ? u.remaining : 100;
+    return Date.now() < u.resetAt ? u.remaining : (u.limit || 100);
   } catch { return 100; }
 }
 
@@ -36,7 +36,8 @@ export async function pptPrice(card) {
       const res = await fetch(`${BASE}/cards?${q}`, { headers: { authorization: `Bearer ${cfg.pptApiKey}` } });
       const left = Number(res.headers.get('x-ratelimit-daily-remaining'));
       const reset = Number(res.headers.get('x-ratelimit-daily-reset'));
-      if (Number.isFinite(left)) fs.writeFileSync(usageFile, JSON.stringify({ remaining: left, resetAt: (reset || 0) * 1000 }));
+      const limit = Number(res.headers.get('x-ratelimit-daily-limit'));
+      if (Number.isFinite(left)) fs.writeFileSync(usageFile, JSON.stringify({ remaining: left, limit: Number.isFinite(limit) ? limit : 100, resetAt: (reset || 0) * 1000 }));
       if (!res.ok) throw new Error(`${res.status}`);
       cache.set(key, (await res.json()).data || []);
     } catch (e) {

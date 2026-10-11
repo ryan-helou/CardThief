@@ -83,7 +83,7 @@ export function buildReport(cfg, live) {
     week: week.filter(d => d.day >= weekSince.slice(0, 10)),
     nearMisses, recent,
     budgets: {
-      pptLeft: ppt && Date.now() < ppt.resetAt ? ppt.remaining : 100, pptMax: 100,
+      pptLeft: ppt && Date.now() < ppt.resetAt ? ppt.remaining : (ppt?.limit || 100), pptMax: ppt?.limit || 100,
       ebayCalls: ebayCallsToday(), ebayMax: 5000,
       messages: sent[todayKey] || 0, messagesMax: cfg.maxMessagesPerDay ?? 8,
     },

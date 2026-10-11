@@ -112,5 +112,6 @@
     "offerSlack": 0.1,
     "allowJapanese": true,
     "maxEbayCallsPerDay": 4500
-  }
+  },
+  "maxQueue": 300
 }

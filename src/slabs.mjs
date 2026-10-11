@@ -161,6 +161,9 @@ export async function judgeSlab(cfg, l) {
     action = 'auction';
     // A busy auction's current bid says nothing about where it will end.
     if ((l.bids ?? 0) > s.maxBids) return pass(`auction already has ${l.bids} bids`, { cost });
+    // Only the final hour tells you anything: a C$2 opening bid a week out will end near market.
+    const minsLeft = l.endsAt ? (new Date(l.endsAt) - Date.now()) / 60e3 : 0;
+    if (minsLeft > (s.auctionWindowMin ?? 60)) return pass(`auction ends in ${minsLeft > 1440 ? Math.round(minsLeft / 1440) + ' days' : Math.round(minsLeft / 60) + ' h'}; judged in its last hour`, { cost });
     if (tier === 'pass' && maxItem > l.priceCad * 1.1) tier = 'good';
   } else if (tier === 'pass' && l.buyingOptions?.includes('BEST_OFFER') && maxItem >= l.priceCad * s.minOfferRatio) {
     action = 'offer';

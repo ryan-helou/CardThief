@@ -30,6 +30,7 @@ export interface Deal {
   hiddenUpside?: string;
   askSeller?: string;
   offer?: number;
+  compsQueries?: string[];
   action?: "buy" | "offer" | "auction";
   grade?: string | null;
   draft?: string; // opener the bot can send for Ryan

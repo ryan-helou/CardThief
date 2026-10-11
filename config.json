@@ -65,7 +65,7 @@
   },
   "firstRunLookbackHours": 24,
   "maxBuyCad": 500,
-  "maxJudgementsPerHour": 20,
+  "maxJudgementsPerHour": 40,
   "judgeModel": "sonnet",
   "money": {
     "ebaySellFee": 0.1325,
@@ -120,5 +120,6 @@
     "maxEbayCallsPerDay": 4500
   },
   "maxQueue": 600,
-  "pptMinCad": 3
+  "pptMinCad": 3,
+  "deepLocal": true
 }

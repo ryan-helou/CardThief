@@ -115,7 +115,11 @@ async function drain(cfg) {
     // Cheapest first, but $0–2 "placeholder" prices last: their real price is unknown.
     const rank = x => (x.priceCad <= 2 ? 1e6 + x.priceCad : x.priceCad);
     queue.sort((a, b) => rank(a) - rank(b));
-    let l = queue.shift();
+    // When the hourly full-check cap is used up, local listings (which always need one) wait; eBay keeps going.
+    const sonnetFull = sonnetAt.length >= cfg.maxJudgementsPerHour;
+    const pick = sonnetFull && cfg.deepLocal !== false ? queue.findIndex(x => x.source === 'ebay') : 0;
+    if (pick < 0) { log(`full-check cap reached, ${queue.length} local listings waiting`); return; }
+    let l = queue.splice(pick, 1)[0];
     judgedAt.push(Date.now());
     try {
       // Kijiji pages are a cheap HTTP fetch; Marketplace pages need a browser, so they're opened only for Stage 3.

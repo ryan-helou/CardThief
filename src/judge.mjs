@@ -224,7 +224,7 @@ export async function value(cfg, l, ident, { pptOk = true, strict = false } = {}
       if (p) { market = p.cad; basis = p.basis + (p.ambiguous ? ' (cheapest match)' : ''); }
     }
     // Real eBay sold prices for slabs, and for raw cards worth enough to matter (free plan ≈ 40 lookups/day).
-    if (pptOk && (c.grade || (market ?? (c.estUsd || 0) * fx.USD) >= 15)) {
+    if (pptOk && (c.grade || (market ?? (c.estUsd || 0) * fx.USD) >= (cfg.pptMinCad ?? 3))) {
       const e = await pptPrice(c);
       if (e) { market = e.usd * fx.USD; basis = e.basis; }
     }

@@ -87,7 +87,7 @@
   "maxMessagesPerDay": 8,
   "minPriceCad": 0,
   "triageModel": "haiku",
-  "pptReserveCredits": 10,
+  "pptReserveCredits": 200,
   "maxTriagePerHour": 60,
   "mode": "slabs",
   "slabs": {
@@ -113,5 +113,6 @@
     "allowJapanese": true,
     "maxEbayCallsPerDay": 4500
   },
-  "maxQueue": 300
+  "maxQueue": 300,
+  "pptMinCad": 3
 }

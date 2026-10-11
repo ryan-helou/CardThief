@@ -81,7 +81,20 @@ async function pollFacebook(cfg) {
 // Check in with the app; the app calls the bot "quiet" after 15 minutes without one.
 const beat = c => heartbeat({ kijiji: stats.kijiji, facebook: c.facebook?.enabled ? stats.facebook : null, ebay: ebayReady(c) ? stats.ebay : null, queue: queue.length, judgedToday: stats.judged, dealsToday: stats.deals, lastError: stats.lastError });
 
+// Deals go stale in hours, so when more arrives than Mint can check, keep the newest
+// and drop the rest (unseen, so a relisting can come back). Marketplace/Kijiji are kept first: they're the best source.
+function trimQueue(cfg) {
+  const max = cfg.maxQueue ?? 300;
+  if (queue.length <= max) return;
+  const local = queue.filter(x => x.source !== 'ebay');
+  const ebay = queue.filter(x => x.source === 'ebay').sort((a, b) => new Date(b.postedAt) - new Date(a.postedAt));
+  const keep = [...local, ...ebay].slice(0, max);
+  log(`queue trimmed: ${queue.length} → ${keep.length} (kept the newest)`);
+  queue.splice(0, queue.length, ...keep);
+}
+
 async function drain(cfg) {
+  trimQueue(cfg);
   if (Date.now() < judgePausedUntil) return;
   // Judge for a few minutes at most, then let the searches run again; otherwise a long queue starves them.
   const until = Date.now() + (cfg.drainMinutes ?? 3) * 60e3;

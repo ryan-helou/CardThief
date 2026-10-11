@@ -126,7 +126,8 @@ async function drain(cfg) {
         : await judge(cfg, l, { allowStage3: sonnetAt.length < cfg.maxJudgementsPerHour, detail: l.source === 'facebook' ? x => facebookDetail(cfg, x) : null });
       if (r.stage === 3) sonnetAt.push(Date.now());
       if (r.stage === 1) judgedAt.pop(); // priced from the title: no AI used, doesn't count toward the hourly cap
-      seen.add(l.id); seen.save();
+      const earlyAuction = /judged in its last hour/.test(r.ident?.summary || '');
+      if (!earlyAuction) { seen.add(l.id); seen.save(); }
       stats.judged++;
       const rec = { at: new Date().toISOString(), photo: l.images?.[0] || null, stage: r.stage, aiCalls: aiUsage.calls, aiUsd: +aiUsage.usd.toFixed(4), id: l.id, url: l.url, title: l.title, price: l.priceCad, tier: r.tier, profit: +r.profit.toFixed(2), roi: +r.roi.toFixed(2), resale: +r.resale.toFixed(2), kind: r.ident.kind, fakeRisk: r.ident.fakeRisk, lines: r.lines, summary: r.ident.summary, askSeller: r.ident.askSeller };
       appendJsonl('judged', rec);

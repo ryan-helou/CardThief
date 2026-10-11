@@ -29,7 +29,9 @@ Work down the stages. Stop at the first stage that can decide. AI is the last re
 - [ ] Clearly not a deal (profit under half the "good" bar) → **pass, free**.
 - [ ] Looks like a deal → Stage 3 to verify photos (fakes, condition, right card).
 
-## Stage 2: quick look (Haiku, title + one photo)
+## Stage 2: quick look (Haiku, title + one photo) — eBay only
+Marketplace and Kijiji skip Stages 1–2: local deals are rare and hide in photos, so every local listing that passes Stage 0 gets the full Stage 3 read (up to 40 an hour).
+
 - [ ] Only for listings Stage 1 couldn't settle. Up to 60 an hour.
 - [ ] One question: could this plausibly resell for **≥ 1.3× its all-in cost**? Give a rough value.
 - [ ] No → pass. Yes → Stage 3.

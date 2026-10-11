@@ -324,10 +324,14 @@ export async function judge(cfg, l, { allowStage3 = true, detail = null } = {}) 
   const cost0 = l.priceCad + (l.shippingCad || 0) + (l.source === 'ebay' ? (l.priceCad + (l.shippingCad || 0)) * cfg.money.buyerTaxOnline : 0);
   const { good } = cfg.deal;
 
-  // Stage 1: a clear single card priced straight from its title.
-  const s1 = await stage1(cfg, l);
+  // Marketplace/Kijiji deals are rare and hide in photos and descriptions, so they skip the
+  // title-only shortcuts and always get the full Sonnet read. eBay keeps the cheap stages.
+  const deep = l.source !== 'ebay' && cfg.deepLocal !== false;
+  const s1 = deep ? null : await stage1(cfg, l);
   let hint = null;
-  if (s1) {
+  if (deep) {
+    hint = 'local listing: read the description and every photo carefully; look for valuable cards hidden in lots and binders';
+  } else if (s1) {
     if (s1.profit < good.minProfitCad / 2 || s1.roi < good.minRoi / 2) return { ...s1, stage: 1, tier: 'pass' };
     hint = `${s1.lines.map(x => `${x.label} ≈ C$${x.marketCad} (${x.basis})`).join('; ')}; title-based profit C$${s1.profit.toFixed(0)}`;
   } else {

@@ -11,6 +11,7 @@ export async function checkPsaCert(cert, card, grade) {
       headers: { authorization: `bearer ${cfg.psaToken}` },
     });
     if (res.status === 429) return { checked: false, note: 'PSA lookup limit reached today: check the cert yourself.' };
+    if (res.status === 403) return { checked: false, note: `PSA cert ${cert}: check it on psacard.com/cert (API access pending PSA approval).` };
     if (!res.ok) throw new Error(`${res.status}`);
     const c = (await res.json())?.PSACert;
     if (!c?.CertNumber) return { checked: true, ok: false, note: `PSA cert ${cert} doesn't exist: likely fake.` };

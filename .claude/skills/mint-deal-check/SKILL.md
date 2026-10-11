@@ -65,3 +65,13 @@ Mint watches eBay **graded Pokémon cards only**: new listings from Canadian sel
 - [ ] **Offer:** listing takes Best Offer and the price that makes it a good deal is ≥ 75% of asking → "Offer C$X".
 - [ ] **Auction:** ≤ 1 bid and the max bid for a good deal is ≥ 10% above the current bid → "Bid up to C$X".
 - [ ] Before alerting: **PSA slabs get their cert checked with PSA** (must exist and match card + grade, else no alert), then Haiku checks the photos: label matches the card and grade, slab looks genuine.
+
+## Verification gate (every alert, every source)
+Nothing reaches Ryan unless all of these hold. Anything uncertain is not an alert.
+- [ ] **Recent value:** priced on the last 7 days of sales (or a sale within 30 days). Never an all-time median alone; if the trend is falling, use the lower figure.
+- [ ] **Right card:** same number, same set size, same name, same language as the listing (label read from the photos for slabs).
+- [ ] **Sells:** recent sales show it actually moves (not just one sale months ago).
+- [ ] **Cheaper than the market:** below the cheapest other copy for sale, or a Best Offer/auction with room.
+- [ ] **Genuine:** photos match the card and grade; PSA cert verified when PSA API access is approved.
+- [ ] **Busy auctions excluded** (more than 1 bid).
+- [ ] The alert lists which checks passed so Ryan can see the evidence.

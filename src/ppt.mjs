@@ -46,13 +46,33 @@ export async function pptPrice(card) {
   }
   const list = cache.get(key);
   const num = card.number ? String(card.number).split('/')[0].replace(/^0+/, '') : null;
-  const hit = list.find(c => !num || String(c.cardNumber || '').split('/')[0].replace(/^0+/, '') === num) || (num ? null : list[0]);
+  // Identity check: same number, same set size when we know it, and the card's main name word.
+  const total = card.setTotal || (String(card.number || '').split('/')[1] ? Number(String(card.number).split('/')[1]) : null);
+  const word = String(card.name).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).find(w => w.length >= 3);
+  const hit = list.find(c => {
+    const [n, t] = String(c.cardNumber || '').split('/');
+    if (num && n.replace(/^0+/, '') !== num) return false;
+    if (total && t && Number(t) !== Number(total)) return false;
+    if (word && !String(c.name || '').toLowerCase().includes(word)) return false;
+    return true;
+  });
   if (!hit) return null;
   const sales = hit.ebay?.salesByGrade || {};
   const g = card.grade ? gradeKey(card.grade) : 'ungraded';
   const s = g ? sales[g] : null;
   if (s?.medianPrice && s.count >= 1) {
-    return { usd: s.medianPrice, basis: `eBay sold median ${g === 'ungraded' ? 'raw' : g.toUpperCase().replace('_', '.')} (${s.count} sales)`, sales: s.count, lastSale: s.lastSaleDate, id: hit.id, label: hit.name };
+    // Value on RECENT sales: the all-time median lags a falling market (a PSA 10 at a $172 median
+    // was really selling for ~$100 that week). Prefer PPT's 7-day price; if it's missing, only trust
+    // the long median when the trend isn't down, and take the lower of the two otherwise.
+    const recent = s.smartMarketPrice?.confidence !== 'low' && s.smartMarketPrice?.price ? s.smartMarketPrice.price : s.marketPriceMedian7Day || s.marketPrice7Day || null;
+    const usd = recent ? (s.marketTrend === 'down' ? Math.min(recent, s.medianPrice) : recent) : s.marketTrend === 'down' ? s.medianPrice * 0.8 : s.medianPrice;
+    const label = g === 'ungraded' ? 'raw' : g.toUpperCase().replace('_', '.');
+    const trend = s.marketTrend === 'down' ? ' ↓ falling' : s.marketTrend === 'up' ? ' ↑ rising' : '';
+    return {
+      usd, recent: Boolean(recent), trend: s.marketTrend || null, weekly: s.dailyVolume7Day != null ? s.dailyVolume7Day * 7 : null,
+      basis: `eBay ${label}: ${recent ? `last 7 days US$${Math.round(recent)}` : `no recent sales, all-time median US$${Math.round(s.medianPrice)}`}${trend} (${s.count} sales total)`,
+      sales: s.count, lastSale: s.lastSaleDate, id: hit.id, label: hit.name,
+    };
   }
   if (!card.grade && hit.prices?.market) return { usd: hit.prices.market, basis: 'TCGplayer market', sales: null, lastSale: null, id: hit.id, label: hit.name };
   return null;

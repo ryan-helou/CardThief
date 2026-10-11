@@ -155,6 +155,17 @@ export async function judgeSlab(cfg, l) {
     action = 'offer';
     tier = 'good';
   }
+  // Verification gate: an alert needs RECENT proof of value, not just an all-time median.
+  const checks = [];
+  if (tier !== 'pass') {
+    const lastDays = sold.lastSale ? (Date.now() - new Date(sold.lastSale)) / 864e5 : 999;
+    if (!sold.recent && lastDays > 30) return pass(`no sales in the last 30 days to confirm the ${grade} price`, { cost, stage: 3 });
+    if (sold.weekly != null && sold.weekly < 0.25 && lastDays > 45) return pass(`too illiquid to flip (${sold.weekly.toFixed(1)} sales/week)`, { cost, stage: 3 });
+    checks.push(`✓ value from ${sold.recent ? 'last-7-day sales' : 'a sale in the last 30 days'}${sold.trend === 'down' ? ' (falling; lower figure used)' : ''}`);
+    checks.push(`✓ card matched (${card.name} ${card.number}, ${japanese ? 'Japanese' : 'English'})`);
+    if (comps?.count) checks.push(`✓ ${comps.count} other ${grade} copies listed, cheapest C$${comps.cheapest.toFixed(0)} all-in`);
+    if (sold.weekly != null) checks.push(`${sold.weekly >= 1 ? '✓' : '•'} sells ~${sold.weekly.toFixed(1)}×/week`);
+  }
   // For offers and auctions, show the numbers at the suggested price, not the current one.
   let showCost = cost, showProfit = profit, showRoi = roi;
   if (action !== 'buy' && tier !== 'pass') {
@@ -194,7 +205,7 @@ export async function judgeSlab(cfg, l) {
     : action === 'auction'
       ? `${grade} auction at C$${l.priceCad.toFixed(0)} with ${l.bids ?? 0} bids; worth bidding up to C$${maxItem}.`
       : `${grade} at C$${cost.toFixed(0)} all-in vs ~C$${market.toFixed(0)} (${sold.sales ? 'eBay sold median' : 'cheapest other listing, no sold data'}).`;
-  const fullSummary = `${summary}${compsNote}${summaryNote ? ' ' + summaryNote : ''}`;
+  const fullSummary = `${summary}${compsNote}${summaryNote ? ' ' + summaryNote : ''}${checks.length ? ` Checks: ${checks.join(' · ')}.` : ''}`;
   log(`slab ${l.id}: ${grade} cost C$${cost.toFixed(0)} market C$${market.toFixed(0)} → ${tier} (${action})`);
   return {
     stage: tier === 'pass' ? (usedAI ? 2 : 1) : 3, tier, action, price: l.priceCad, cost: showCost, resale, profit: showProfit, roi: showRoi, lines: [line], bulk: 0,

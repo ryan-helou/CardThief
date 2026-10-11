@@ -94,7 +94,7 @@
   "minPriceCad": 0,
   "triageModel": "haiku",
   "pptReserveCredits": 200,
-  "maxTriagePerHour": 90,
+  "maxTriagePerHour": 150,
   "mode": "slabs",
   "slabs": {
     "graders": [

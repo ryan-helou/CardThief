@@ -63,7 +63,8 @@ export function buildReport(cfg, live) {
   for (const r of judged) stages[r.stage || 1] = (stages[r.stage || 1] || 0) + 1;
 
   const slim = r => ({ at: r.at, source: source(r.id), title: r.title, url: r.url, photo: r.photo || null, tier: r.tier, stage: r.stage || 1, price: r.price, profit: r.profit, roi: r.roi, why: (r.summary || '').slice(0, 220) });
-  const nearMisses = judged.filter(r => r.tier === 'pass' && r.profit > 0 && r.price).sort((a, b) => b.profit - a.profit).slice(0, 12).map(slim);
+  // Closest calls among listings Mint actually valued (resale > 0), even if they'd lose a little.
+  const nearMisses = judged.filter(r => r.tier === 'pass' && r.resale > 0 && r.price).sort((a, b) => b.profit - a.profit).slice(0, 12).map(slim);
   const recent = judged.slice(-25).reverse().map(slim);
 
   const week = [];

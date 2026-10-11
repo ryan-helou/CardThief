@@ -242,7 +242,7 @@ export function NearMisses({ items, soldLinks }: { items: Slim[]; soldLinks: (q:
             )}
             <div className="min-w-0 flex-1">
               <p className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="font-semibold text-[var(--ink-2)]">est. +{money(r.profit)}</span>
+                <span className={`font-semibold ${r.profit >= 0 ? "text-[var(--ink-2)]" : "text-[var(--ink-3)]"}`}>est. {r.profit >= 0 ? "+" : ""}{money(r.profit)}</span>
                 <span className="truncate text-[var(--ink-3)]">{sourceName(r.source)} · {ago(r.at)}</span>
               </p>
               <a href={r.url} target="_blank" rel="noreferrer" className="mt-0.5 line-clamp-2 text-sm font-medium leading-snug">{r.title}</a>

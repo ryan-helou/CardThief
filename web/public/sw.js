@@ -1,5 +1,5 @@
 // Network-first with a cached fallback, plus Web Push. Bump BUILD on every deploy.
-const BUILD = "mint-v3";
+const BUILD = "mint-v4";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => {

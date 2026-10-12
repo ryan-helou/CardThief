@@ -7,7 +7,7 @@ export async function checkPsaCert(cert, card, grade) {
   if (!cfg.psaToken) return { checked: false, note: 'PSA cert not checked (no PSA token yet).' };
   if (!cert) return { checked: false, note: 'No PSA cert number in the listing: ask the seller for it.' };
   try {
-    const res = await fetch(`https://api.psacard.com/publicapi/cert/GetByCertNumber/${encodeURIComponent(cert)}`, {
+    const res = await fetch(`https://api.psacard.com/publicapi/cert/GetByCertNumber/${encodeURIComponent(cert)}`, { signal: AbortSignal.timeout(30_000),
       headers: { authorization: `bearer ${cfg.psaToken}` },
     });
     if (res.status === 429) return { checked: false, note: 'PSA lookup limit reached today: check the cert yourself.' };

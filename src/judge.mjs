@@ -148,7 +148,7 @@ async function downloadImages(l, max = 4) {
   let n = 0;
   for (const url of l.images.slice(0, max)) {
     try {
-      const res = await fetch(url, { headers: { 'user-agent': UA } });
+      const res = await fetch(url, { signal: AbortSignal.timeout(30_000), headers: { 'user-agent': UA } });
       if (!res.ok) continue;
       const type = res.headers.get('content-type') || '';
       const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg';

@@ -24,7 +24,7 @@ export async function distanceKm(place) {
     last = Date.now();
     try {
       const q = new URLSearchParams({ q: `${place}, Canada`, format: 'json', limit: '1' });
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?${q}`, { headers: { 'user-agent': `CardThief/1.0 (personal; ${UA.slice(0, 20)})` } });
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?${q}`, { signal: AbortSignal.timeout(30_000), headers: { 'user-agent': `CardThief/1.0 (personal; ${UA.slice(0, 20)})` } });
       const hit = (await res.json())[0];
       cache[key] = hit ? { lat: +hit.lat, lon: +hit.lon } : null;
       fs.writeFileSync(file, JSON.stringify(cache));

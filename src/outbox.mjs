@@ -19,7 +19,7 @@ function countSent() {
 }
 
 async function api(cfg, method, body) {
-  const res = await fetch(new URL('/api/agent/outbox', cfg.appUrl), {
+  const res = await fetch(new URL('/api/agent/outbox', cfg.appUrl), { signal: AbortSignal.timeout(30_000),
     method,
     headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.agentToken}` },
     body: body ? JSON.stringify(body) : undefined,

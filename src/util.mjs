@@ -41,14 +41,17 @@ export function log(...args) {
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const jitter = (ms, frac = 0.25) => ms * (1 - frac + Math.random() * 2 * frac);
 
+// A dropped connection can leave a request hanging for ~8 minutes, freezing the whole loop: cap it.
+const timeout = opts => opts.signal ?? AbortSignal.timeout(opts.timeoutMs ?? 30_000);
+
 export async function fetchText(url, opts = {}) {
-  const res = await fetch(url, { ...opts, headers: { 'user-agent': UA, 'accept-language': 'fr-CA,en;q=0.8', ...(opts.headers || {}) } });
+  const res = await fetch(url, { ...opts, signal: timeout(opts), headers: { 'user-agent': UA, 'accept-language': 'fr-CA,en;q=0.8', ...(opts.headers || {}) } });
   if (!res.ok) throw new Error(`${res.status} ${url}`);
   return res.text();
 }
 
 export async function fetchJson(url, opts = {}) {
-  const res = await fetch(url, { ...opts, headers: { 'user-agent': UA, ...(opts.headers || {}) } });
+  const res = await fetch(url, { ...opts, signal: timeout(opts), headers: { 'user-agent': UA, ...(opts.headers || {}) } });
   if (!res.ok) throw new Error(`${res.status} ${url} ${(await res.text()).slice(0, 200)}`);
   return res.json();
 }

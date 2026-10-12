@@ -120,6 +120,7 @@ async function drain(cfg) {
   // Several checks run side by side: most of a check is waiting on eBay/PPT/Claude, not CPU.
   const workers = Math.max(1, cfg.judgeWorkers ?? 3);
   await Promise.all(Array.from({ length: workers }, (_, i) => worker(cfg, until, i === 0)));
+  if (queue.length) log(`drain paused, ${queue.length} waiting`);
 }
 
 async function worker(cfg, until, lead) {

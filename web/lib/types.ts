@@ -71,6 +71,7 @@ export interface Report {
   };
   week?: { day: string; found: number; judged: number; deals: number }[];
   nearMisses?: Slim[];
+  outcomes?: Outcome[];
   recent?: Slim[];
   budgets?: { pptLeft: number; pptMax: number; ebayCalls: number; ebayMax: number; messages: number; messagesMax: number };
   sources?: Record<string, { on: boolean; every?: number; mode?: string; hours?: number[]; active?: boolean }>;
@@ -91,3 +92,10 @@ export interface Heartbeat extends Report {
   dealsToday?: number;
   lastError?: string | null;
 }
+
+// What happened to an eBay alert after it was sent (checked every 15 minutes for 14 days).
+export type Outcome = {
+  id: string; title: string; url: string; price: number; profit: number;
+  alertedAt: string; status: "live" | "sold" | "ended" | "gone";
+  minutesAfterAlert?: number; minutesAfterListing?: number;
+};

@@ -79,6 +79,14 @@ function DealCard({ r }: { r: DealRow }) {
 
       {!quiet && (
         <>
+          {d.source === "ebay" && r.status !== "bought" && (
+            <a
+              href={d.url}
+              className={`mt-2 block rounded-lg py-2.5 text-center text-sm font-semibold text-white ${steal ? "bg-[var(--steal)]" : "bg-[var(--accent)]"}`}
+            >
+              {d.action === "offer" ? `Make offer ${money(d.offer)} on eBay` : d.action === "auction" ? `Bid up to ${money(d.offer)} on eBay` : `Buy on eBay · ${money(d.cost)} all-in`}
+            </a>
+          )}
           <SoldCheck queries={d.compsQueries ?? d.lines.slice(0, 3).map((x) => x.label)} />
           {d.fakeRisk && d.fakeRisk !== "low" && (
             <p className="mt-2 text-xs text-[var(--warn)]">⚠ Fake risk {d.fakeRisk}{d.fakeReasons ? `: ${d.fakeReasons}` : ""}</p>

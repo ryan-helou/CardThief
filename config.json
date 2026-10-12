@@ -42,7 +42,7 @@
   },
   "facebook": {
     "enabled": true,
-    "everyMinutes": 25,
+    "everyMinutes": 15,
     "activeHours": [
       8,
       23
@@ -120,6 +120,7 @@
     "maxEbayCallsPerDay": 4500
   },
   "maxQueue": 600,
+  "judgeWorkers": 3,
   "pptMinCad": 3,
   "deepLocal": true
 }

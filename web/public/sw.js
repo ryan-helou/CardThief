@@ -1,5 +1,5 @@
 // Network-first with a cached fallback, plus Web Push. Bump BUILD on every deploy.
-const BUILD = "mint-v4";
+const BUILD = "mint-v5";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => {
@@ -36,14 +36,24 @@ self.addEventListener("push", (e) => {
       tag: d.tag || "cardthief",
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      data: { url: d.url || "/" },
+      data: { url: d.url || "/", buyUrl: d.buyUrl || null },
+      requireInteraction: Boolean(d.urgent),
+      renotify: true,
+      vibrate: d.urgent ? [300, 100, 300, 100, 300] : [200],
+      actions: d.buyUrl ? [{ action: "buy", title: "Buy on eBay" }, { action: "open", title: "Details" }] : [],
     }),
   );
 });
 
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const target = e.notification.data?.url || "/";
+  const data = e.notification.data || {};
+  // A plain tap on an eBay steal opens the listing; "Details" opens Mint.
+  const target = e.action !== "open" && data.buyUrl ? data.buyUrl : data.url || "/";
+  if (target.startsWith("http") && !target.startsWith(self.location.origin)) {
+    e.waitUntil(self.clients.openWindow(target));
+    return;
+  }
   e.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
       for (const c of list) if ("focus" in c) { c.navigate(target); return c.focus(); }

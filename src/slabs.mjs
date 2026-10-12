@@ -132,7 +132,10 @@ export async function judgeSlab(cfg, l) {
   let market = sold.usd * fx.USD;
   // Sanity check: a sold median far above every copy for sale usually means the lookup matched the
   // wrong card (a 25th Anniversary Pikachu PSA 10 came back at C$1,138 while bidding sat at C$50).
-  if (comps?.count >= s.minComps && market > comps.cheapest * 2) {
+  // With no other copies for sale to compare against, value on the long-run median only (never a hot week):
+  // a Jungle Pikachu PSA 7 alerted at C$137 off a spiky 7-day price with nothing live to check it against.
+  if (!(comps?.count >= s.minComps) && sold.median) market = Math.min(market, sold.median * fx.USD);
+  if (comps?.count >= s.minComps && market > comps.cheapest * 1.5) {
     log(`slab ${l.id}: sold median C$${market.toFixed(0)} vs cheapest listing C$${comps.cheapest.toFixed(0)}, capping`);
     market = comps.cheapest / (1 + m.buyerTaxOnline);
     sold = { ...sold, basis: `${sold.basis}, capped at cheapest other listing (median looked wrong)` };

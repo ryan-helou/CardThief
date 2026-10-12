@@ -9,7 +9,7 @@ import { DATA, loadConfig, log } from './util.mjs';
 async function app(path, body) {
   const cfg = loadConfig();
   if (!cfg.appUrl || !cfg.agentToken) return null;
-  const res = await fetch(new URL(path, cfg.appUrl), {
+  const res = await fetch(new URL(path, cfg.appUrl), { signal: AbortSignal.timeout(30_000),
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.agentToken}` },
     body: JSON.stringify(body),

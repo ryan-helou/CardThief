@@ -58,7 +58,7 @@ function pickPrinting(hits, title) {
 async function fetchCards(cfg, card, limit) {
   try {
     const q = new URLSearchParams({ search: `${card.name} ${card.number ? String(card.number).split('/')[0] : ''}`.trim(), limit: String(limit), includeEbay: 'true', ...(card.language === 'jp' ? { language: 'japanese' } : {}) });
-    const res = await fetch(`${BASE}/cards?${q}`, { headers: { authorization: `Bearer ${cfg.pptApiKey}` } });
+    const res = await fetch(`${BASE}/cards?${q}`, { signal: AbortSignal.timeout(30_000), headers: { authorization: `Bearer ${cfg.pptApiKey}` } });
     const left = Number(res.headers.get('x-ratelimit-daily-remaining'));
     const reset = Number(res.headers.get('x-ratelimit-daily-reset'));
     const max = Number(res.headers.get('x-ratelimit-daily-limit'));

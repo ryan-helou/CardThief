@@ -113,6 +113,11 @@ export async function judgeSlab(cfg, l) {
   // sells for ~US$26 (Collectr, 2026-10-10). Only real sales can make an alert.
   let sold = pptAvailable() ? await gradePrice({ ...card, grade }) : null;
   if (!sold) return pass(`no eBay sold data for ${card.name} ${card.number} ${grade}`, { cost });
+  // PPT's "CGC 10" mixes Gem Mint 10 and the pricier Pristine 10 (a Mew ex 158/128 "CGC 10" alerted off
+  // US$458 when Gem Mint copies sold for ~US$150–400). A plain CGC 10 is valued at the lower of median and recent.
+  if (/^CGC 10$/.test(grade) && !/pristine/i.test(l.title) && sold.median && sold.median < sold.usd) {
+    sold = { ...sold, usd: sold.median, basis: `${sold.basis}; Gem Mint 10 (not Pristine): median US$${Math.round(sold.median)}` };
+  }
   {
     const quickResale = sold.usd * fx.USD * (1 - m.ebaySellFee) - m.ebayOrderFee - s.resaleShipCad;
     const roomForOffer = l.buyingOptions?.includes('BEST_OFFER') && quickResale / (1 + cfg.deal.good.minRoi) >= cost * s.minOfferRatio;

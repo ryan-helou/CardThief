@@ -6,6 +6,7 @@ import { searchEbay, ebayDetail, ebayReady } from './sources/ebay.mjs';
 import { sweepFacebook, facebookDetail, inActiveHours } from './sources/facebook.mjs';
 import { prefilter, judge, aiUsage } from './judge.mjs';
 import { judgeSlab } from './slabs.mjs';
+import { pptPaced } from './ppt.mjs';
 import { toDeal, sendDeal, heartbeat, retryPendingDeals } from './notify.mjs';
 import { getFx } from './price.mjs';
 import { distanceKm } from './geo.mjs';
@@ -133,8 +134,11 @@ async function worker(cfg, until, lead) {
     queue.sort((a, b) => rank(a) - rank(b));
     // When the hourly full-check cap is used up, local listings (which always need one) wait; eBay keeps going.
     const sonnetFull = sonnetAt.length >= cfg.maxJudgementsPerHour;
-    const pick = queue.findIndex(x => x.source === 'ebay' || (!fbBusy && !(sonnetFull && cfg.deepLocal !== false)));
+    // Over the sold-price budget pace: eBay slabs wait (newest first when it frees up) rather than be judged blind.
+    const ebayOk = cfg.mode !== 'slabs' || pptPaced();
+    const pick = queue.findIndex(x => (x.source === 'ebay' && ebayOk) || (x.source !== 'ebay' && !fbBusy && !(sonnetFull && cfg.deepLocal !== false)));
     if (pick < 0) {
+      if (!ebayOk) { if (lead) log(`price-lookup budget paced, ${queue.length} waiting`); return; }
       if (sonnetFull && lead) log(`full-check cap reached, ${queue.length} local listings waiting`);
       if (sonnetFull || !fbBusy) return;
       await sleep(5000); continue; // another worker has the Marketplace tab

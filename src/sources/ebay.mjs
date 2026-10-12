@@ -115,10 +115,10 @@ export async function ebayDetail(cfg, listing, fx) {
 // Free price check: the same card in the same grade, for sale right now (Buy It Now, ships to Canada),
 // all-in to H7T 2W7. A slab is only interesting if it's clearly cheaper than these.
 const compCache = new Map();
-export async function activeComps(cfg, card, grade, selfId, fx, { japanese = false } = {}) {
+export async function activeComps(cfg, card, grade, selfId, fx, { japanese = false, pristine = false } = {}) {
   const num = String(card.number).split('/')[0].replace(/^0+(?=\d)/, '');
   const [grader, g] = grade.split(' ');
-  const key = `${card.name}|${num}|${grade}|${japanese}`.toLowerCase();
+  const key = `${card.name}|${num}|${grade}|${japanese}|${pristine}`.toLowerCase();
   const hit = compCache.get(key);
   if (hit && Date.now() - hit.at < 6 * 3600e3) return hit.v;
   if (ebayCallsToday() >= (cfg.slabs?.maxEbayCallsPerDay ?? 4500)) return null; // keep headroom for searches
@@ -137,15 +137,18 @@ export async function activeComps(cfg, card, grade, selfId, fx, { japanese = fal
     .filter(it => `ebay:${it.legacyItemId}` !== selfId && gradeRe.test(it.title) && numRe.test(it.title))
     .filter(it => !/korean|chinese|\blot\b|bundle|\bx\d|\d+x\b/i.test(it.title))
     .filter(it => japanese === /japan|japon|\bjp\b|jpn/i.test(it.title))
+    // CGC Pristine 10 and BGS Black Label sell for far more than a plain 10: never mix them in.
+    .filter(it => !(grader.toUpperCase() === 'CGC' && g === '10') || pristine === /pristine/i.test(it.title))
+    .filter(it => !/black label/i.test(it.title))
     .map(it => {
       const p = toCad(it.price?.value, it.price?.currency, fx);
       const s = it.shippingOptions?.[0]?.shippingCost;
       const ship = s ? toCad(s.value, s.currency, fx) : (it.itemLocation?.country === 'CA' ? 15 : 30);
-      return (p + ship) * (1 + tax);
+      return { allIn: (p + ship) * (1 + tax), title: it.title };
     })
-    .filter(Number.isFinite)
-    .sort((a, b) => a - b);
-  const v = { count: prices.length, cheapest: prices[0] ?? null, median: prices.length ? prices[Math.floor(prices.length / 2)] : null };
+    .filter(x => Number.isFinite(x.allIn))
+    .sort((a, b) => a.allIn - b.allIn);
+  const v = { count: prices.length, cheapest: prices[0]?.allIn ?? null, median: prices.length ? prices[Math.floor(prices.length / 2)].allIn : null, items: prices.slice(0, 8).map(x => `C$${Math.round(x.allIn)} all-in: ${x.title}`) };
   compCache.set(key, { at: Date.now(), v });
   return v;
 }

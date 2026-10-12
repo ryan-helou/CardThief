@@ -77,3 +77,13 @@ Nothing reaches Ryan unless all of these hold. Anything uncertain is not an aler
 - [ ] **Genuine:** photos match the card and grade; PSA cert verified when PSA API access is approved.
 - [ ] **Busy auctions excluded** (more than 1 bid).
 - [ ] The alert lists which checks passed so Ryan can see the evidence.
+
+
+## Strict value and second check (eBay slabs, since 2026-10-12)
+
+Every false alarm had one price figure that disagreed with reality (wrong printing, CGC Pristine mixed into CGC 10, one hot week, a new set crashing). So before any alert:
+
+1. **Strict value** = the lower of (a) the median of this grade's individual sales in the last 30 days (PPT history, junk under 1/5 of the median dropped) and (b) the cheapest identical slab for sale now (CGC Pristine 10 and BGS Black Label never count as a plain 10). Fewer than 3 sales in 30 days, or no identical copy for sale → no alert.
+2. **Photo check** on Sonnet (label, grader, genuine slab).
+3. **Second check**: Sonnet gets the raw evidence (daily sales, live listings, description) and tries to prove the alert wrong; it must confirm, and its fair resale price must still clear the good-deal bar.
+4. Rule changes are replayed on every past alert first: `node scripts/backtest-alerts.mjs` (env `SHIP`, `OPTS` override shipping and buying options for ended listings).

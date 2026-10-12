@@ -149,3 +149,20 @@ export async function activeComps(cfg, card, grade, selfId, fx, { japanese = fal
   compCache.set(key, { at: Date.now(), v });
   return v;
 }
+
+// Is an alerted listing still for sale? Used to learn how long steals last and whether they were real.
+export async function ebayItemStatus(cfg, itemId) {
+  const t = await getToken(cfg.ebayKeys);
+  try {
+    const it = await fetchJson(`https://api.ebay.com/buy/browse/v1/item/${encodeURIComponent(itemId)}`, {
+      headers: { authorization: `Bearer ${t}`, 'X-EBAY-C-MARKETPLACE-ID': cfg.ebay.marketplace },
+    });
+    const a = it.estimatedAvailabilities?.[0] || {};
+    const ended = it.itemEndDate && Date.parse(it.itemEndDate) <= Date.now();
+    const sold = (a.estimatedSoldQuantity || 0) > 0;
+    return { status: sold ? 'sold' : ended || a.estimatedAvailabilityStatus === 'OUT_OF_STOCK' ? 'ended' : 'live', endedAt: it.itemEndDate || null, bids: it.bidCount ?? null, price: it.currentBidPrice?.value ?? it.price?.value ?? null };
+  } catch (e) {
+    if (/\b404\b/.test(e.message)) return { status: 'gone', endedAt: null };
+    throw e;
+  }
+}

@@ -11,6 +11,7 @@ import { getFx } from './price.mjs';
 import { distanceKm } from './geo.mjs';
 import { processOutbox } from './outbox.mjs';
 import { buildReport } from './report.mjs';
+import { trackOutcomes } from './outcomes.mjs';
 
 const ONCE = process.argv.includes('--once');
 const seen = new Seen('seen');
@@ -99,27 +100,47 @@ function trimQueue(cfg) {
   queue.splice(0, queue.length, ...keep);
 }
 
+// Steals last ~30 minutes (a Magneton TAG 10 at a third of value sold 31 min after listing), so
+// what matters is how fresh a listing is, not how cheap: newest first, auctions about to end before that,
+// $0–2 "placeholder" prices last since their real price is unknown.
+function rank(x) {
+  if (x.priceCad <= 2) return 2e13 - Date.parse(x.postedAt || 0);
+  const ends = x.endsAt ? Date.parse(x.endsAt) - Date.now() : Infinity;
+  if (ends < 60 * 60e3) return ends - 1e13; // auction in its last hour: soonest first
+  return -Date.parse(x.postedAt || 0);
+}
+
+let fbBusy = false; // one Marketplace page at a time: the bot's browser has a single tab
+
 async function drain(cfg) {
   trimQueue(cfg);
   if (Date.now() < judgePausedUntil) return;
   // Judge for a few minutes at most, then let the searches run again; otherwise a long queue starves them.
   const until = Date.now() + (cfg.drainMinutes ?? 3) * 60e3;
-  while (queue.length && Date.now() < until) {
-    await processOutbox();
-    await beat(cfg);
+  // Several checks run side by side: most of a check is waiting on eBay/PPT/Claude, not CPU.
+  const workers = Math.max(1, cfg.judgeWorkers ?? 3);
+  await Promise.all(Array.from({ length: workers }, (_, i) => worker(cfg, until, i === 0)));
+}
+
+async function worker(cfg, until, lead) {
+  while (queue.length && Date.now() < until && Date.now() >= judgePausedUntil) {
+    if (lead) { await processOutbox(); await beat(cfg); }
     const hourAgo = Date.now() - 3600e3;
     while (judgedAt.length && judgedAt[0] < hourAgo) judgedAt.shift();
     while (sonnetAt.length && sonnetAt[0] < hourAgo) sonnetAt.shift();
-    if (judgedAt.length >= (cfg.maxTriagePerHour || cfg.maxJudgementsPerHour)) { log(`judge budget hit, ${queue.length} waiting`); return; }
-    // Cheapest first: the best ROI tends to hide in the low-priced listings.
-    // Cheapest first, but $0–2 "placeholder" prices last: their real price is unknown.
-    const rank = x => (x.priceCad <= 2 ? 1e6 + x.priceCad : x.priceCad);
+    if (judgedAt.length >= (cfg.maxTriagePerHour || cfg.maxJudgementsPerHour)) { if (lead) log(`judge budget hit, ${queue.length} waiting`); return; }
     queue.sort((a, b) => rank(a) - rank(b));
     // When the hourly full-check cap is used up, local listings (which always need one) wait; eBay keeps going.
     const sonnetFull = sonnetAt.length >= cfg.maxJudgementsPerHour;
-    const pick = sonnetFull && cfg.deepLocal !== false ? queue.findIndex(x => x.source === 'ebay') : 0;
-    if (pick < 0) { log(`full-check cap reached, ${queue.length} local listings waiting`); return; }
+    const pick = queue.findIndex(x => x.source === 'ebay' || (!fbBusy && !(sonnetFull && cfg.deepLocal !== false)));
+    if (pick < 0) {
+      if (sonnetFull && lead) log(`full-check cap reached, ${queue.length} local listings waiting`);
+      if (sonnetFull || !fbBusy) return;
+      await sleep(5000); continue; // another worker has the Marketplace tab
+    }
     let l = queue.splice(pick, 1)[0];
+    const fb = l.source === 'facebook';
+    if (fb) fbBusy = true;
     judgedAt.push(Date.now());
     try {
       // Kijiji pages are a cheap HTTP fetch; Marketplace pages need a browser, so they're opened only for Stage 3.
@@ -127,13 +148,13 @@ async function drain(cfg) {
       if (l.source === 'ebay' && cfg.mode !== 'slabs') l = await ebayDetail(cfg, l, await getFx());
       const r = cfg.mode === 'slabs' && l.source === 'ebay'
         ? await judgeSlab(cfg, l)
-        : await judge(cfg, l, { allowStage3: sonnetAt.length < cfg.maxJudgementsPerHour, detail: l.source === 'facebook' ? x => facebookDetail(cfg, x) : null });
+        : await judge(cfg, l, { allowStage3: sonnetAt.length < cfg.maxJudgementsPerHour, detail: fb ? x => facebookDetail(cfg, x) : null });
       if (r.stage === 3) sonnetAt.push(Date.now());
       if (r.stage === 1) judgedAt.pop(); // priced from the title: no AI used, doesn't count toward the hourly cap
       const earlyAuction = /judged in its last hour/.test(r.ident?.summary || '');
       if (!earlyAuction) { seen.add(l.id); seen.save(); }
       stats.judged++;
-      const rec = { at: new Date().toISOString(), photo: l.images?.[0] || null, stage: r.stage, aiCalls: aiUsage.calls, aiUsd: +aiUsage.usd.toFixed(4), id: l.id, url: l.url, title: l.title, price: l.priceCad, tier: r.tier, profit: +r.profit.toFixed(2), roi: +r.roi.toFixed(2), resale: +r.resale.toFixed(2), kind: r.ident.kind, fakeRisk: r.ident.fakeRisk, lines: r.lines, summary: r.ident.summary, askSeller: r.ident.askSeller };
+      const rec = { at: new Date().toISOString(), photo: l.images?.[0] || null, stage: r.stage, aiCalls: aiUsage.calls, aiUsd: +aiUsage.usd.toFixed(4), id: l.id, url: l.url, title: l.title, price: l.priceCad, tier: r.tier, profit: +r.profit.toFixed(2), roi: +r.roi.toFixed(2), resale: +r.resale.toFixed(2), kind: r.ident.kind, fakeRisk: r.ident.fakeRisk, lines: r.lines, summary: r.ident.summary, askSeller: r.ident.askSeller, postedAt: l.postedAt || null, itemId: l.itemId || null };
       appendJsonl('judged', rec);
       log(`${r.tier.toUpperCase().padEnd(5)} s${r.stage} ${l.id} $${l.priceCad} → profit $${r.profit.toFixed(0)} (${Math.round(r.roi * 100)}%) ${l.title}`);
       if (r.tier !== 'pass') {
@@ -154,6 +175,8 @@ async function drain(cfg) {
       l.failures = (l.failures || 0) + 1;
       if (l.failures < 3) queue.push(l); else { seen.add(l.id); seen.save(); }
       await sleep(30_000);
+    } finally {
+      if (fb) fbBusy = false;
     }
   }
 }
@@ -173,6 +196,7 @@ async function main() {
     await beat(c);
     await retryPendingDeals();
     await processOutbox();
+    if (ebayReady(c)) await trackOutcomes(c).catch(e => log('outcomes failed', e.message));
     await drain(c);
     await beat(c);
     if (ONCE) break;

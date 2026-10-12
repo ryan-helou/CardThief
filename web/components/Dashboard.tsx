@@ -120,6 +120,20 @@ export function TodayView({ hb }: { hb: Heartbeat | null }) {
   const b = hb?.budgets;
   return (
     <div className="space-y-3">
+      {(hb?.outcomes?.length ?? 0) > 0 && (
+        <Card title="What happened to the alerts" sub="Each eBay alert is re-checked every 15 minutes. Real steals sell fast.">
+          <ul className="space-y-1.5 text-sm">
+            {hb!.outcomes!.slice(0, 8).map((o) => (
+              <li key={o.id} className="flex items-baseline justify-between gap-3">
+                <a href={o.url} className="min-w-0 truncate">{o.title}</a>
+                <span className={`shrink-0 num ${o.status === "sold" ? "text-[var(--good)]" : "text-[var(--ink-3)]"}`}>
+                  {o.status === "live" ? "still up" : o.status === "sold" ? `sold in ${o.minutesAfterAlert} min` : o.status === "ended" ? "ended" : "pulled"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       <Card title="Today's funnel" sub="Every listing goes through the cheapest check that can decide it.">
         <ul className="space-y-2.5">
           {funnel.map((f, i) => (

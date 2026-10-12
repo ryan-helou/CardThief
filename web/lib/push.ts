@@ -5,7 +5,7 @@ export function pushConfigured(): boolean {
   return !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
 }
 
-export async function sendPush(p: { title: string; body?: string; tag?: string; url?: string }, only?: Sub) {
+export async function sendPush(p: { title: string; body?: string; tag?: string; url?: string; buyUrl?: string; urgent?: boolean }, only?: Sub) {
   if (!pushConfigured()) return { sent: 0, failed: 0, pruned: 0, skipped: "not-configured" as const };
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT || "mailto:cardthief@localhost",
@@ -16,7 +16,7 @@ export async function sendPush(p: { title: string; body?: string; tag?: string; 
   const subs = only ? [only] : await allSubs();
   if (subs.length === 0) return { sent: 0, failed: 0, pruned: 0, skipped: "no-devices" as const };
   let sent = 0, failed = 0, pruned = 0;
-  const body = JSON.stringify({ title: p.title, body: p.body, tag: p.tag ?? "cardthief", url: p.url ?? "/" });
+  const body = JSON.stringify({ title: p.title, body: p.body, tag: p.tag ?? "cardthief", url: p.url ?? "/", buyUrl: p.buyUrl, urgent: p.urgent });
   await Promise.all(
     subs.map(async (s) => {
       try {

@@ -29,6 +29,9 @@ export async function POST(req: Request) {
       body: d.title.slice(0, 120) + (d.summary ? `\n${d.summary.slice(0, 110)}` : ""),
       tag: d.id,
       url: `/#${encodeURIComponent(d.id)}`,
+      // Steals sell in ~30 minutes: tapping an eBay buy/offer alert goes straight to the listing.
+      buyUrl: d.source === "ebay" && d.action !== "auction" ? d.url : undefined,
+      urgent: d.tier === "steal",
     });
   }
   return Response.json({ ok: true, isNew, push });

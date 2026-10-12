@@ -3,6 +3,7 @@ import path from 'node:path';
 import { DATA } from './util.mjs';
 import { ebayCallsToday } from './sources/ebay.mjs';
 import { inActiveHours } from './sources/facebook.mjs';
+import { outcomes } from './outcomes.mjs';
 
 // Everything the app shows about how Mint is doing, built from the bot's own logs.
 // Rebuilt at most once a minute (the logs only grow by a few lines a minute).
@@ -82,6 +83,7 @@ export function buildReport(cfg, live) {
     today: { found: judged.length + skipped.length, skipped: skipped.length, judged: judged.length, deals: judged.filter(r => r.tier !== 'pass').length, stages, bySource, reasons },
     week: week.filter(d => d.day >= weekSince.slice(0, 10)),
     nearMisses, recent,
+    outcomes: Object.entries(outcomes()).map(([id, o]) => ({ id, ...o })).sort((a, b) => b.alertedAt.localeCompare(a.alertedAt)).slice(0, 20),
     budgets: {
       pptLeft: ppt && Date.now() < ppt.resetAt ? ppt.remaining : (ppt?.limit || 100), pptMax: ppt?.limit || 100,
       ebayCalls: ebayCallsToday(), ebayMax: 5000,

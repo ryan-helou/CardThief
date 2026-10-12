@@ -36,6 +36,18 @@ function remaining() {
   } catch { return 100; }
 }
 
+// Pacing: spread what's left evenly until the daily reset, so the credits never run out mid-day
+// (checking every eBay slab costs ~1,500/hour at peak; the plan gives 20,000/day).
+const spent = []; // [time, credits]
+function resetAt() { try { return JSON.parse(fs.readFileSync(usageFile, 'utf8')).resetAt; } catch { return 0; } }
+export function pptPaced() {
+  const hourAgo = Date.now() - 3600e3;
+  while (spent.length && spent[0][0] < hourAgo) spent.shift();
+  const used = spent.reduce((a, [, n]) => a + n, 0);
+  const hoursLeft = Math.max(1, (resetAt() - Date.now()) / 3600e3);
+  return used < (remaining() - (loadConfig().pptReserveCredits ?? 10)) / hoursLeft;
+}
+
 export function pptAvailable() {
   const cfg = loadConfig();
   return Boolean(cfg.pptApiKey) && remaining() > (cfg.pptReserveCredits ?? 10);
@@ -86,6 +98,7 @@ async function fetchCards(cfg, card, limit, withTotal = true) {
     const left = Number(res.headers.get('x-ratelimit-daily-remaining'));
     const reset = Number(res.headers.get('x-ratelimit-daily-reset'));
     const max = Number(res.headers.get('x-ratelimit-daily-limit'));
+    if (Number.isFinite(left)) { const before = remaining(); if (before > left) spent.push([Date.now(), before - left]); }
     if (Number.isFinite(left)) fs.writeFileSync(usageFile, JSON.stringify({ remaining: left, limit: Number.isFinite(max) ? max : 100, resetAt: (reset || 0) * 1000 }));
     if (!res.ok) throw new Error(`${res.status}`);
     return (await res.json()).data || [];

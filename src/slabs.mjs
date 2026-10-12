@@ -25,7 +25,7 @@ export function slabGrade(l) {
 const cacheFile = path.join(DATA, 'slab-price-cache.json');
 const cache = fs.existsSync(cacheFile) ? JSON.parse(fs.readFileSync(cacheFile, 'utf8')) : {};
 async function gradePrice(card) {
-  const key = `${card.name}|${card.number}|${card.grade}`.toLowerCase();
+  const key = `${card.name}|${card.number}|${card.grade}|${/pok[eé]mon cent(er|re)|p\.?c\.? etb|stamp|staff|prerelease/i.test(card.title || '') ? 'v' : ''}`.toLowerCase();
   const hit = cache[key];
   if (hit && Date.now() - hit.at < 6 * 3600e3) return hit.p;
   const p = await pptPrice(card);
@@ -97,7 +97,7 @@ export async function judgeSlab(cfg, l) {
 
   const tax = (l.priceCad + (l.shippingCad || 0)) * m.buyerTaxOnline;
   const cost = l.priceCad + (l.shippingCad || 0) + tax;
-  const card = { ...id.card, grade, language: japanese ? 'jp' : 'en' };
+  const card = { ...id.card, grade, language: japanese ? 'jp' : 'en', title: l.title };
   const raw = id.raw;
   // Free pre-screen: a slab can't be a steal if it already costs more than a generous multiple of the raw card.
   // Skip the ceiling for vintage and 1st Editions: their slabs are worth many times the cheap raw printing.

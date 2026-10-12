@@ -30,11 +30,29 @@ const gradeKey = g => {
 export async function pptPrice(card) {
   const cfg = loadConfig();
   if (!pptAvailable() || !card?.name) return null;
-  const key = `${card.name}|${card.number || ''}|${card.language || 'en'}`;
-  if (!cache.has(key)) cache.set(key, await fetchCards(cfg, card, 1));
+  // Stamped printings (Pokémon Center, Staff, Prerelease…) are separate cards on PPT and sell for far
+  // more: a Pokémon Center Magneton 159 PSA 10 is ~US$190 vs ~US$107 for the regular one. When the
+  // title hints at one, look at several matches and take the printing the title names.
+  const cue = VARIANT_CUE.test(card.title || '');
+  const key = `${card.name}|${card.number || ''}|${card.language || 'en'}|${cue ? 'v' : ''}`;
+  if (!cache.has(key)) cache.set(key, await fetchCards(cfg, card, cue ? 3 : 1));
   let list = cache.get(key);
   if (list && !list.some(c => matches(c, card))) { list = (await fetchCards(cfg, card, 3)) || list; cache.set(key, list); }
-  return fromHit(list?.find(c => matches(c, card)), card);
+  return fromHit(pickPrinting((list || []).filter(c => matches(c, card)), card.title || ''), card);
+}
+
+const VARIANT_CUE = /pok[eé]mon cent(er|re)|\bp\.?c\.? etb|stamp|staff|prerelease|pre-release/i;
+// "Magneton - 159 (Pokémon Center Exclusive)" → its variant words must appear in the title;
+// with no variant named in the title, prefer the plain printing.
+function pickPrinting(hits, title) {
+  const t = title.toLowerCase().replace(/\bp\.?c\.?(?= etb)/, 'center');
+  const score = c => {
+    const v = String(c.name || '').match(/\(([^)]+)\)/)?.[1]?.toLowerCase();
+    if (!v) return 1;
+    const words = v.replace(/pok[eé]mon/g, '').split(/[^a-z]+/).filter(w => w.length >= 4 && w !== 'exclusive');
+    return words.some(w => t.includes(w)) ? 2 : 0;
+  };
+  return hits.sort((a, b) => score(b) - score(a))[0];
 }
 
 async function fetchCards(cfg, card, limit) {

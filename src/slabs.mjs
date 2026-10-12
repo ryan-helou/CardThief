@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DATA, log } from './util.mjs';
 import { priceCard, getFx } from './price.mjs';
-import { pptPrice, pptAvailable } from './ppt.mjs';
-import { parseTitle, verifySlabPhotos, identifySlabAI } from './judge.mjs';
+import { pptPrice, pptAvailable, pptSales } from './ppt.mjs';
+import { parseTitle, verifySlabPhotos, identifySlabAI, runClaude } from './judge.mjs';
 import { activeComps, ebayDetail } from './sources/ebay.mjs';
 import { checkPsaCert, certFromListing } from './psa.mjs';
 
@@ -127,7 +127,7 @@ export async function judgeSlab(cfg, l) {
     }
   }
   let comps = null;
-  try { comps = await activeComps(cfg, card, grade, l.id, fx, { japanese }); } catch (e) { log('active comps failed', e.message); }
+  try { comps = await activeComps(cfg, card, grade, l.id, fx, { japanese, pristine: /pristine/i.test(l.title) }); } catch (e) { log('active comps failed', e.message); }
   if (comps?.count >= s.minComps) {
     const beatsAll = cost <= comps.cheapest * (1 - s.minBelowCheapest);
     const offerRoom = l.buyingOptions?.includes('BEST_OFFER') && cost <= comps.cheapest * (1 + s.offerSlack);
@@ -152,6 +152,24 @@ export async function judgeSlab(cfg, l) {
   }
   if ((sold.sales ?? 0) < 5 && (!comps || comps.count < s.minComps)) {
     return pass(`too little sold data to trust (${sold.sales} sales) and no other copies to compare`, { cost });
+  }
+  // Strict value, for anything that could become an alert: the LOWER of two independent numbers,
+  // the median of this grade's individual sales in the last 30 days and the cheapest identical slab
+  // for sale now. Either missing → no alert. Every false alarm so far (wrong printing, Pristine mixed
+  // into CGC 10, one hot week, a new set crashing) had one of these two disagreeing with the price used.
+  let evidence = null;
+  const prelim = market * (1 - m.ebaySellFee) - m.ebayOrderFee - s.resaleShipCad;
+  if (prelim / (1 + cfg.deal.good.minRoi) >= cost * s.minOfferRatio) {
+    const hist = await pptSales({ ...card, grade, title: l.title }).catch(e => { log('sale history failed', e.message); return null; });
+    const n = hist?.sales.length ?? 0;
+    if (n < (s.minSales30 ?? 3)) return pass(`only ${n} ${grade} sales in the last 30 days: too few to trust a value`, { cost });
+    if (!(comps?.count >= 1)) return pass(`no other ${grade} copy for sale to confirm the value`, { cost });
+    const med30 = hist.median * fx.USD;
+    const compPre = comps.cheapest / (1 + m.buyerTaxOnline);
+    const strict = Math.min(med30, compPre, market);
+    sold = { ...sold, basis: `lower of 30-day median of ${n} sales (C$${med30.toFixed(0)}) and cheapest live copy (C$${compPre.toFixed(0)} before tax)` };
+    market = strict;
+    evidence = { hist, med30, compPre };
   }
   const resale = market * (1 - m.ebaySellFee) - m.ebayOrderFee - s.resaleShipCad;
   const profit = resale - cost;
@@ -203,7 +221,7 @@ export async function judgeSlab(cfg, l) {
     summaryNote = v.note;
     // Priced off other listings? Re-check them using the name read off the label, in case the title parse was off.
     if (!sold.sales && v.cardName && v.cardName.toLowerCase() !== String(card.name).toLowerCase()) {
-      const c2 = await activeComps(cfg, { ...card, name: v.cardName }, grade, l.id, fx, { japanese }).catch(() => null);
+      const c2 = await activeComps(cfg, { ...card, name: v.cardName }, grade, l.id, fx, { japanese, pristine: /pristine/i.test(l.title) }).catch(() => null);
       if (c2?.count >= s.minComps) {
         const m2 = c2.cheapest / (1 + m.buyerTaxOnline);
         const r2 = m2 * (1 - m.ebaySellFee) - m.ebayOrderFee - s.resaleShipCad;
@@ -217,6 +235,11 @@ export async function judgeSlab(cfg, l) {
       if (pc.checked && !pc.ok) return pass(`cert check failed: ${pc.note}`, { cost, stage: 3 });
       summaryNote = `${pc.note} ${summaryNote}`;
     }
+    // Last gate: a skeptical second reviewer sees the raw evidence and tries to prove the alert wrong.
+    const r2 = await secondOpinion(cfg, { l, card, grade, cost: showCost, resale, profit: showProfit, action, maxItem, sold, comps, evidence })
+      .catch(e => ({ confirm: false, reason: `second check unavailable (${e.message})` }));
+    if (!r2.confirm) return pass(`second check rejected: ${r2.reason}`, { cost, stage: 3 });
+    checks.push(`✓ second check: ${r2.reason}`);
   }
   const compsNote = comps?.count ? ` Cheapest other ${grade} for sale: C$${comps.cheapest.toFixed(0)} all-in (${comps.count} listed).` : '';
   const line = { label: `${card.name} ${card.number} ${grade}`, marketCad: +market.toFixed(2), netCad: +resale.toFixed(2), basis: `${sold.basis}, last sale ${String(sold.lastSale || '').slice(0, 10)}` };
@@ -234,4 +257,38 @@ export async function judgeSlab(cfg, l) {
     offer: action === 'buy' ? null : maxItem, maxItem,
     ident: { kind: 'graded', fakeRisk: 'low', summary: fullSummary, askSeller: '', hiddenUpside: '', grade, sales: sold.sales },
   };
+}
+
+const SECOND_SCHEMA = {
+  type: 'object',
+  properties: { confirm: { type: 'boolean' }, fairResaleCad: { type: 'number' }, reason: { type: 'string' } },
+  required: ['confirm', 'fairResaleCad', 'reason'],
+};
+async function secondOpinion(cfg, { l, card, grade, cost, resale, profit, action, maxItem, sold, comps, evidence }) {
+  const m = cfg.money, good = cfg.deal.good;
+  const prompt = [
+    `eBay listing: "${l.title}"`,
+    `Seller: ${l.seller || 'unknown'} · buying options: ${(l.buyingOptions || []).join('/')}${l.bids != null ? ` · ${l.bids} bids` : ''}`,
+    `Description: ${(l.description || '').slice(0, 600)}`,
+    `Identified as: ${card.name} ${card.number} (${card.language === 'jp' ? 'Japanese' : 'English'}), ${grade}. Price database entry: ${evidence?.hist?.label || 'n/a'}`,
+    `Plan: ${action === 'buy' ? 'buy now' : action === 'offer' ? `offer C$${maxItem}` : `bid up to C$${maxItem}`}, all-in cost C$${cost.toFixed(0)} (shipping to Laval + 14.975% tax).`,
+    `Value used: C$${(resale + m.ebayOrderFee + cfg.slabs.resaleShipCad) / (1 - m.ebaySellFee) | 0} (${sold.basis}). After ${Math.round(m.ebaySellFee * 100)}% eBay fees and C$${cfg.slabs.resaleShipCad} shipping, resale nets C$${resale.toFixed(0)}, profit C$${profit.toFixed(0)}.`,
+    `This grade's eBay sales, last 30 days (USD, daily average x count): ${evidence?.hist?.days.join('; ') || 'none'}`,
+    `Identical slabs for sale now, cheapest first:\n${(comps?.items || []).join('\n') || 'none'}`,
+    '',
+    `Your job is to find any reason this is NOT a real flip: wrong card or printing (stamped/promo/reprint/language), grade mix-ups (CGC Pristine vs Gem Mint 10, BGS Black Label), the sales list being polluted by another printing or by outliers, a new set whose prices are falling, too few sales, red flags in the title or description (proxy, custom, reprint, damaged/cracked slab, "not the card shown"), or live listings that contradict the value.`,
+    `fairResaleCad: the price (C$, before fees) you are confident it would actually sell for within ~2 weeks, using the low end of the evidence.`,
+    `confirm=true only if, at that fair price, the profit after fees is still at least C$${good.minProfitCad} and ${Math.round(good.minRoi * 100)}% of cost, and nothing above looks wrong. reason: one short sentence a buyer can read.`,
+  ].join('\n');
+  if (process.env.MINT_DEBUG) console.log(prompt);
+  const r = await runClaude(cfg, prompt, null, {
+    model: cfg.judgeModel || 'sonnet', schema: SECOND_SCHEMA,
+    system: 'You are a skeptical reviewer for a Pokémon slab reseller. False alarms cost real money; when in doubt, reject.',
+  });
+  // Re-run the numbers at the reviewer's fair price; its arithmetic doesn't get the final say.
+  const net = r.fairResaleCad * (1 - m.ebaySellFee) - m.ebayOrderFee - cfg.slabs.resaleShipCad;
+  if (r.confirm && (net - cost < good.minProfitCad || (net - cost) / cost < good.minRoi)) {
+    return { confirm: false, reason: `at a fair C$${Math.round(r.fairResaleCad)} the profit is only C$${Math.round(net - cost)}` };
+  }
+  return r;
 }

@@ -172,7 +172,7 @@ function encodeImages(dir, maxPx) {
   }).filter(Boolean);
 }
 
-function runClaude(cfg, prompt, imgDir, { model, schema, system, maxPx = 1024 }) {
+export function runClaude(cfg, prompt, imgDir, { model, schema, system, maxPx = 1024 }) {
   const cwd = path.join(DATA, 'judge');
   fs.mkdirSync(cwd, { recursive: true });
   const args = [
@@ -282,8 +282,10 @@ export async function verifySlabPhotos(cfg, l, cardLabel, grade) {
   const { dir, n } = await downloadImages(l, 3);
   try {
     if (!n) return { ok: true, note: 'No photos to check.' };
-    return await runClaude(cfg, `eBay listing: ${l.title}\nExpected slab: ${cardLabel}, ${grade}.\nLook at the photos. ok=true only if the slab label shows this card and grade and the slab looks genuine (correct label design, no tampering, not a "proxy"/custom). note: one short sentence for the buyer (centering, any concern). cert: the certification number printed on the label (digits only), or null if you can't read it. cardName: the card's name as printed on the label, in English (e.g. "Squawkabilly ex"), or null. If the expected card name above isn't a real Pokémon card name, judge the label alone.`, dir, {
-      model: cfg.triageModel || 'haiku', schema: SLAB_SCHEMA, maxPx: 1024,
+    // Only alert candidates get here, so it's worth the stronger model: Haiku misread a TAG label as
+    // another grader and called the real "Mega Attack Rare" rarity a proxy.
+    return await runClaude(cfg, `eBay listing: ${l.title}\nExpected slab: ${cardLabel}, ${grade}.\nLook at the photos. ok=true only if the slab label shows this card and grade and the slab looks genuine (correct label design for that grader, no tampering, not a "proxy"/custom). Newer sets use rarity names you may not know (e.g. "Mega Attack Rare", "Futuristic Rare"); an unfamiliar rarity alone is not a red flag. note: one short sentence for the buyer (centering, any concern). cert: the certification number printed on the label (digits only), or null if you can't read it. cardName: the card's name as printed on the label, in English (e.g. "Squawkabilly ex"), or null. If the expected card name above isn't a real Pokémon card name, judge the label alone.`, dir, {
+      model: cfg.judgeModel || 'sonnet', schema: SLAB_SCHEMA, maxPx: 1024,
       system: 'You check graded Pokémon card slabs in listing photos for a reseller. Be strict about label mismatches and fakes.',
     });
   } finally {

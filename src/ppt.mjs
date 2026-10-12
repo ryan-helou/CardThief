@@ -89,11 +89,11 @@ function pickPrinting(hits, title) {
   return hits.sort((a, b) => score(b) - score(a))[0];
 }
 
-async function fetchCards(cfg, card, limit, withTotal = true) {
+async function fetchCards(cfg, card, limit, withTotal = true, history = false) {
   try {
     // "pikachu 60/64" finds the Jungle card; "pikachu 60" finds a World Collection promo named "Pikachu (Jungle)".
     const num = card.number ? (withTotal && total(card) ? `${String(card.number).split('/')[0]}/${total(card)}` : String(card.number).split('/')[0]) : '';
-    const q = new URLSearchParams({ search: `${card.name} ${num}`.trim(), limit: String(limit), includeEbay: 'true', ...(card.language === 'jp' ? { language: 'japanese' } : {}) });
+    const q = new URLSearchParams({ search: `${card.name} ${num}`.trim(), limit: String(limit), includeEbay: 'true', ...(history ? { includeHistory: 'true' } : {}), ...(card.language === 'jp' ? { language: 'japanese' } : {}) });
     const res = await fetch(`${BASE}/cards?${q}`, { signal: AbortSignal.timeout(30_000), headers: { authorization: `Bearer ${cfg.pptApiKey}` } });
     const left = Number(res.headers.get('x-ratelimit-daily-remaining'));
     const reset = Number(res.headers.get('x-ratelimit-daily-reset'));
@@ -148,4 +148,35 @@ function fromHit(hit, card) {
   }
   if (!card.grade && hit.prices?.market) return { usd: hit.prices.market, basis: 'TCGplayer market', sales: null, lastSale: null, id: hit.id, label: hit.name };
   return null;
+}
+
+// Day-by-day sales for one grade over the last 30 days, fetched only for alert candidates (+1 credit).
+// The basis for the strict value: the median of actual sales, not a weekly average a spike can drag up.
+const salesCache = new Map();
+export async function pptSales(card) {
+  const cfg = loadConfig();
+  if (!pptAvailable() || !card?.name) return null;
+  const key = `${card.name}|${card.number || ''}|${card.language || 'en'}|${VARIANT_CUE.test(card.title || '') ? 'v' : ''}`;
+  let hit = salesCache.get(key);
+  if (!hit || Date.now() - hit.at > 6 * 3600e3) {
+    let list = await fetchCards(cfg, card, VARIANT_CUE.test(card.title || '') ? 3 : 1, true, true);
+    if (list && !list.some(c => matches(c, card))) list = (await fetchCards(cfg, card, 3, true, true)) || list;
+    if (list && !list.some(c => matches(c, card)) && total(card)) list = (await fetchCards(cfg, card, 3, false, true)) || list;
+    if (!list) return null;
+    hit = { at: Date.now(), c: pickPrinting(list.filter(c => matches(c, card)), card.title || '') };
+    salesCache.set(key, hit);
+  }
+  const days = Object.entries(hit.c?.ebay?.priceHistory?.[gradeKey(card.grade)] || {})
+    .filter(([d]) => Date.parse(d) >= Date.now() - 30 * 864e5).sort(([a], [b]) => a.localeCompare(b));
+  const sales = days.flatMap(([, v]) => Array(Math.max(1, v.count || 1)).fill(v.average)).filter(x => x > 0);
+  const sorted = [...sales].sort((a, b) => a - b);
+  // Drop junk like a US$0.99 cancelled sale: anything under a fifth of the median.
+  const mid = sorted[Math.floor(sorted.length / 2)] || 0;
+  const clean = sorted.filter(x => x >= mid * 0.2);
+  return {
+    label: hit.c?.name || null,
+    sales: clean,
+    median: clean.length ? clean[Math.floor((clean.length - 1) / 2)] : null, // lower median
+    days: days.map(([d, v]) => `${d}: US$${Math.round(v.average)}${(v.count || 1) > 1 ? ` x${v.count}` : ''}`),
+  };
 }

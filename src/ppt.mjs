@@ -141,7 +141,7 @@ function fromHit(hit, card) {
     const label = g === 'ungraded' ? 'raw' : g.toUpperCase().replace('_', '.');
     const trend = s.marketTrend === 'down' ? ' ↓ falling' : s.marketTrend === 'up' ? ' ↑ rising' : '';
     return {
-      usd, recent: Boolean(recent), trend: s.marketTrend || null, weekly: s.dailyVolume7Day != null ? s.dailyVolume7Day * 7 : null,
+      usd, median: s.medianPrice, recent: Boolean(recent), trend: s.marketTrend || null, weekly: s.dailyVolume7Day != null ? s.dailyVolume7Day * 7 : null,
       basis: `eBay ${label}: ${recent ? `last 7 days US$${Math.round(recent)}` : `no recent sales, all-time median US$${Math.round(s.medianPrice)}`}${trend} (${s.count} sales total)`,
       sales: s.count, lastSale: s.lastSaleDate, id: hit.id, label: hit.name,
     };

@@ -7,7 +7,27 @@ import { DATA, loadConfig, log } from './util.mjs';
 // matches (~6 credits) only when the single best match (~2 credits) isn't the exact card.
 const BASE = 'https://www.pokemonpricetracker.com/api/v2';
 const usageFile = path.join(DATA, 'ppt-usage.json');
-const cache = new Map();
+// Lookups are cached on disk for 24 hours (one lookup covers every grade of a card), so restarts
+// don't re-spend credits. Only the fields we read are kept, which keeps the file small.
+const cacheFile = path.join(DATA, 'ppt-cache.json');
+const TTL = 24 * 3600e3;
+const disk = (() => { try { return JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch { return {}; } })();
+let dirty = 0;
+const slim = list => list && list.map(c => ({ id: c.id, name: c.name, cardNumber: c.cardNumber, prices: { market: c.prices?.market }, ebay: { salesByGrade: c.ebay?.salesByGrade } }));
+const cache = {
+  has: k => Boolean(disk[k] && Date.now() - disk[k].at < TTL),
+  get: k => disk[k]?.list,
+};
+function put(k, list) {
+  if (!list) return; // a failed lookup (network) is retried next time, not remembered
+  disk[k] = { at: Date.now(), list: slim(list) };
+  if (++dirty % 10 === 0) {
+    for (const [key, v] of Object.entries(disk)) if (Date.now() - v.at > TTL) delete disk[key];
+    fs.writeFileSync(cacheFile, JSON.stringify(disk));
+  }
+}
+process.on('exit', () => { try { fs.writeFileSync(cacheFile, JSON.stringify(disk)); } catch {} });
+process.once('SIGTERM', () => process.exit(0)); // launchd restarts send SIGTERM; save the cache first
 
 function remaining() {
   try {
@@ -35,9 +55,9 @@ export async function pptPrice(card) {
   // title hints at one, look at several matches and take the printing the title names.
   const cue = VARIANT_CUE.test(card.title || '');
   const key = `${card.name}|${card.number || ''}|${card.language || 'en'}|${cue ? 'v' : ''}`;
-  if (!cache.has(key)) cache.set(key, await fetchCards(cfg, card, cue ? 3 : 1));
+  if (!cache.has(key)) put(key, await fetchCards(cfg, card, cue ? 3 : 1));
   let list = cache.get(key);
-  if (list && !list.some(c => matches(c, card))) { list = (await fetchCards(cfg, card, 3)) || list; cache.set(key, list); }
+  if (list && !list.some(c => matches(c, card))) { list = (await fetchCards(cfg, card, 3)) || list; put(key, list); list = cache.get(key); }
   return fromHit(pickPrinting((list || []).filter(c => matches(c, card)), card.title || ''), card);
 }
 

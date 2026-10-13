@@ -67,11 +67,16 @@ export async function pptPrice(card) {
   // title hints at one, look at several matches and take the printing the title names.
   const cue = VARIANT_CUE.test(card.title || '');
   const key = `${card.name}|${card.number || ''}|${card.language || 'en'}|${cue ? 'v' : ''}`;
-  if (!cache.has(key)) put(key, await fetchCards(cfg, card, cue ? 3 : 1));
-  let list = cache.get(key);
-  if (list && !list.some(c => matches(c, card))) { list = (await fetchCards(cfg, card, 3)) || list; put(key, list); list = cache.get(key); }
-  // Some cards are listed on PPT without the set size: one last try searching by the bare number.
-  if (list && !list.some(c => matches(c, card)) && total(card)) { list = (await fetchCards(cfg, card, 3, false)) || list; put(key, list); list = cache.get(key); }
+  // A miss is remembered too (24h): retrying all three searches for every copy of an unknown card cost
+  // ~14 credits a listing and was most of the daily budget.
+  if (!cache.has(key)) {
+    let list = await fetchCards(cfg, card, cue ? 3 : 1);
+    if (list && !list.some(c => matches(c, card))) list = (await fetchCards(cfg, card, 3)) || list;
+    // Some cards are listed on PPT without the set size: one last try searching by the bare number.
+    if (list && !list.some(c => matches(c, card)) && total(card)) list = (await fetchCards(cfg, card, 3, false)) || list;
+    put(key, list);
+  }
+  const list = cache.get(key);
   return fromHit(pickPrinting((list || []).filter(c => matches(c, card)), card.title || ''), card);
 }
 

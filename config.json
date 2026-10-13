@@ -120,7 +120,7 @@
     "maxEbayCallsPerDay": 4500
   },
   "maxQueue": 600,
-  "judgeWorkers": 3,
+  "judgeWorkers": 4,
   "pptMinCad": 3,
   "deepLocal": true
 }

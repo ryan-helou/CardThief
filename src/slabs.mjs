@@ -38,18 +38,35 @@ async function gradePrice(card) {
 // "2023 POKEMON MEW EN-151 #199 CHARIZARD EX PSA 10". Find the number, then try each word
 // (and word pair) as the card name against the free TCGdex catalog.
 const STOP = /^(pokemon|pokémon|tcg|card|cards|holo|rare|illustration|special|ultra|secret|full|art|promo|black|star|mint|gem|graded|the|of|and|en|jp|edition|1st|shiny|reverse|psa|cgc|bgs|sgc|tag|ace|collection|ex?)$/i;
-async function identify(title) {
+// Words that never are (or start) a card name in a slab title: set codes (M2a, SV4a, S8a), rarity codes,
+// grade words. "Mega Gengar MA PSA 10 M2a 230/193" must give "Mega Gengar", not "MA M a".
+const NOT_NAME = /^(?:[a-z]{1,3}\d{1,2}[a-z]?|\d+(?:st|nd|rd|th)|anniv|anniversary|jp|en|eng|kr|ma|mar|ar|sar|sr|ssr|rr|rrr|chr|csr|ur|hr|ir|sir|fa|tr|pr|nm|mt|holo|foil|rev|gem|mint|pristine|japanese|japan|jpn|english|eng|graded|slab|first|edition|unlimited|shadowless|wotc|psa|cgc|bgs|sgc|tag|ace|pokemon|pokémon|tcg|card|promo)$/i;
+// A catalog hit must actually be the card the title names: every real word of its name appears in the
+// title. "#4 DRAGONITE-HOLO" was matching the trainer "Unidentified Fossil", "FIRE ENERGY #167" the
+// "Lightning Energy" with the same number.
+const norm = t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ');
+function nameInTitle(name, title) {
+  const t = ` ${norm(title)} `;
+  return norm(name).split(' ').filter(w => w.length >= 3 && !/^(ex|gx|v|vmax|vstar|the|of)$/.test(w)).every(w => t.includes(` ${w} `) || t.includes(` ${w}`));
+}
+const nameWords = t => t.replace(/[^\p{L}\d'\s&.-]/gu, ' ').split(/[\s-]+/).filter(w => (w === '&' || /\p{L}/u.test(w)) && !NOT_NAME.test(w));
+// The last n name words, keeping a "&" between them ("Pikachu & Zekrom GX").
+const lastWords = (ws, n) => { const out = []; for (let i = ws.length - 1; i >= 0 && out.filter(w => w !== '&').length < n; i--) out.unshift(ws[i]); return out.join(' ').replace(/^& /, ''); };
+
+export async function identify(title) {
   const p = parseTitle(title);
   const hash = title.match(/#\s?(\d{1,3})\b/);
   const number = p.number || (hash ? hash[1] : null);
   if (!number) return null;
   const words = title.replace(/[^\p{L}\d'\s-]/gu, ' ').split(/\s+/).filter(w => w.length >= 3 && !STOP.test(w) && !/^\d+$/.test(w) && !/^[A-Z]{2,4}-?$/.test(w));
-  const after = hash ? title.slice(hash.index + hash[0].length).split(/\b(PSA|CGC|BGS|SGC|TAG|ACE)\b/i)[0].trim() : '';
-  const tries = [...new Set([after, p.name, ...words.flatMap((w, i) => [words.slice(i, i + 2).join(' '), w])].filter(Boolean))];
+  // PSA-label style: the name sits right after "#4" ("DRAGONITE-HOLO" → "Dragonite").
+  const after = hash ? nameWords(title.slice(hash.index + hash[0].length).split(/\b(PSA|CGC|BGS|SGC|TAG|ACE)\b/i)[0]).slice(0, 3) : [];
+  const afterTries = after.map((_, i) => after.slice(0, after.length - i).join(' '));
+  const tries = [...new Set([...afterTries, p.name, ...words.flatMap((w, i) => [words.slice(i, i + 2).join(' '), w])].filter(Boolean))];
   for (const name of tries.slice(0, 14)) {
     const card = { name: name.replace(/\s+ex$/i, ' ex'), number, setTotal: p.setTotal, variant: p.variant };
     const raw = await priceCard(card, { strict: Boolean(p.setTotal) });
-    if (raw) return { card: { ...card, name: raw.name || card.name }, raw };
+    if (raw && nameInTitle(raw.name || card.name, title)) return { card: { ...card, name: raw.name || card.name }, raw };
   }
   return null;
 }
@@ -71,8 +88,9 @@ export async function judgeSlab(cfg, l) {
     const p = parseTitle(t);
     const hash = t.match(/#\s?(\d{1,3})\b/);
     const number = p.number || hash?.[1];
-    const after = hash ? t.slice(hash.index + hash[0].length).split(/\b(PSA|CGC|BGS|SGC|TAG|ACE)\b/i)[0].replace(/[^\p{L}\s'.-]/gu, ' ').trim().split(/\s+/).slice(0, 3).join(' ') : '';
-    const name = p.name || after;
+    const after = hash ? nameWords(t.slice(hash.index + hash[0].length).split(/\b(PSA|CGC|BGS|SGC|TAG|ACE)\b/i)[0]).slice(0, 3).join(' ') : '';
+    const before = p.number ? lastWords(nameWords(t.slice(0, t.search(/\d{1,3}\s*\/\s*\d{2,3}/)).replace(/\b(PSA|CGC|BGS|SGC|TAG|ACE)\s*\d+(\.\d)?/gi, ' ')), 3) : '';
+    const name = after || before || p.name;
     return name && number ? { card: { name, number, setTotal: p.setTotal, variant: p.variant }, raw: null } : null;
   };
   let id = grade ? (japanese ? jpId(l.title) : await identify(l.title)) : null;

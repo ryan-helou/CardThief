@@ -198,7 +198,14 @@ export async function judgeSlab(cfg, l) {
   const maxItem = Math.floor(((maxAllIn / (1 + m.buyerTaxOnline)) - (l.shippingCad || 0)) / 5) * 5;
 
   let summaryNote = '';
-  let tier = profit >= steal.minProfitCad && roi >= steal.minRoi ? 'steal' : profit >= good.minProfitCad && roi >= good.minRoi ? 'good' : 'pass';
+  // Sell speed: money sitting in a slow slab is money not flipping. Under ~1 sale a week, ask for a
+  // bigger margin (steal 70%+, good 40%+); the alert says how long to expect.
+  const weekly = sold.weekly;
+  const slow = weekly != null && weekly < (s.slowPerWeek ?? 1);
+  const stealRoi = slow ? Math.max(steal.minRoi, s.slowStealRoi ?? 0.7) : steal.minRoi;
+  const goodRoi = slow ? Math.max(good.minRoi, s.slowGoodRoi ?? 0.4) : good.minRoi;
+  const sellTime = weekly == null ? '' : weekly >= 3 ? 'sells within days' : weekly >= 1 ? 'expect ~1–2 weeks to sell' : 'slow seller: expect 2–4+ weeks';
+  let tier = profit >= steal.minProfitCad && roi >= stealRoi ? 'steal' : profit >= good.minProfitCad && roi >= goodRoi ? 'good' : 'pass';
   let action = 'buy';
   const isAuction = l.buyingOptions?.includes('AUCTION') && !l.buyingOptions?.includes('FIXED_PRICE');
   if (isAuction) {
@@ -222,7 +229,7 @@ export async function judgeSlab(cfg, l) {
     checks.push(`✓ value from ${sold.recent ? 'last-7-day sales' : 'a sale in the last 30 days'}${sold.trend === 'down' ? ' (falling; lower figure used)' : ''}`);
     checks.push(`✓ card matched (${card.name} ${card.number}, ${japanese ? 'Japanese' : 'English'})`);
     if (comps?.count) checks.push(`✓ ${comps.count} other ${grade} copies listed, cheapest C$${comps.cheapest.toFixed(0)} all-in`);
-    if (sold.weekly != null) checks.push(`${sold.weekly >= 1 ? '✓' : '•'} sells ~${sold.weekly.toFixed(1)}×/week`);
+    if (sold.weekly != null) checks.push(`${sold.weekly >= 1 ? '✓' : '•'} sells ~${sold.weekly.toFixed(1)}×/week (${sellTime}${slow ? ', so a bigger margin was required' : ''})`);
   }
   // For offers and auctions, show the numbers at the suggested price, not the current one.
   let showCost = cost, showProfit = profit, showRoi = roi;

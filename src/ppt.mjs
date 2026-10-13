@@ -13,7 +13,7 @@ const cacheFile = path.join(DATA, 'ppt-cache.json');
 const TTL = 24 * 3600e3;
 const disk = (() => { try { return JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch { return {}; } })();
 let dirty = 0;
-const slim = list => list && list.map(c => ({ id: c.id, name: c.name, cardNumber: c.cardNumber, prices: { market: c.prices?.market }, ebay: { salesByGrade: c.ebay?.salesByGrade } }));
+const slim = list => list && list.map(c => ({ id: c.id, name: c.name, setName: c.setName, cardNumber: c.cardNumber, prices: { market: c.prices?.market }, ebay: { salesByGrade: c.ebay?.salesByGrade } }));
 const cache = {
   has: k => Boolean(disk[k] && Date.now() - disk[k].at < TTL),
   get: k => disk[k]?.list,
@@ -70,10 +70,14 @@ export async function pptPrice(card) {
   // A miss is remembered too (24h): retrying all three searches for every copy of an unknown card cost
   // ~14 credits a listing and was most of the daily budget.
   if (!cache.has(key)) {
-    let list = await fetchCards(cfg, card, cue ? 3 : 1);
+    // No set size in the title ("#12 MOLTRES"): look at a few printings so the set it names can be picked.
+    let list = await fetchCards(cfg, card, cue || !total(card) ? 3 : 1);
     if (list && !list.some(c => matches(c, card))) list = (await fetchCards(cfg, card, 3)) || list;
     // Some cards are listed on PPT without the set size: one last try searching by the bare number.
     if (list && !list.some(c => matches(c, card)) && total(card)) list = (await fetchCards(cfg, card, 3, false)) || list;
+    // Vintage label titles ("1999 POKEMON JUNGLE 1ST EDITION #6 MR. MIME"): search by name + set instead.
+    const set = setHint(card.title || '');
+    if (list && !list.some(c => matches(c, card)) && set) list = (await fetchCards(cfg, { ...card, number: null, searchExtra: set }, 5)) || list;
     put(key, list);
   }
   const list = cache.get(key);
@@ -85,11 +89,13 @@ const VARIANT_CUE = /pok[eé]mon cent(er|re)|\bp\.?c\.? etb|stamp|staff|prerelea
 // with no variant named in the title, prefer the plain printing.
 function pickPrinting(hits, title) {
   const t = title.toLowerCase().replace(/\bp\.?c\.?(?= etb)/, 'center');
+  // The set the title names wins ties: "1999 POKEMON FOSSIL #12 MOLTRES" is the Fossil Moltres, not another #12.
+  const setBonus = c => String(c.setName || '').toLowerCase().replace(/pok[eé]mon|promo|black star|cards?/g, '').split(/[^a-z0-9]+/).filter(w => w.length >= 4).some(w => t.includes(w)) ? 0.5 : 0;
   const score = c => {
     const v = String(c.name || '').match(/\(([^)]+)\)/)?.[1]?.toLowerCase();
-    if (!v) return 1;
+    if (!v) return 1 + setBonus(c);
     const words = v.replace(/pok[eé]mon/g, '').split(/[^a-z]+/).filter(w => w.length >= 4 && w !== 'exclusive');
-    return words.some(w => t.includes(w)) ? 2 : 0;
+    return (words.some(w => t.includes(w)) ? 2 : 0) + setBonus(c);
   };
   return hits.sort((a, b) => score(b) - score(a))[0];
 }
@@ -98,7 +104,7 @@ async function fetchCards(cfg, card, limit, withTotal = true, history = false) {
   try {
     // "pikachu 60/64" finds the Jungle card; "pikachu 60" finds a World Collection promo named "Pikachu (Jungle)".
     const num = card.number ? (withTotal && total(card) ? `${String(card.number).split('/')[0]}/${total(card)}` : String(card.number).split('/')[0]) : '';
-    const q = new URLSearchParams({ search: `${card.name} ${num}`.trim(), limit: String(limit), includeEbay: 'true', ...(history ? { includeHistory: 'true' } : {}), ...(card.language === 'jp' ? { language: 'japanese' } : {}) });
+    const q = new URLSearchParams({ search: `${card.name} ${num} ${card.searchExtra || ''}`.replace(/\s+/g, ' ').trim(), limit: String(limit), includeEbay: 'true', ...(history ? { includeHistory: 'true' } : {}), ...(card.language === 'jp' ? { language: 'japanese' } : {}) });
     const res = await fetch(`${BASE}/cards?${q}`, { signal: AbortSignal.timeout(30_000), headers: { authorization: `Bearer ${cfg.pptApiKey}` } });
     const left = Number(res.headers.get('x-ratelimit-daily-remaining'));
     const reset = Number(res.headers.get('x-ratelimit-daily-reset'));
@@ -121,7 +127,9 @@ function matches(c, card) {
   const tot = total(card);
   const word = String(card.name).toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).find(w => w.length >= 3);
   const [n, t] = String(c.cardNumber || '').split('/');
-  if (num && n.replace(/^0+/, '') !== num) return false;
+  // "#050" in a title is PPT's "SWSH050": compare the digits when the title gives no letters.
+  const digits = x => x.replace(/^[A-Za-z]+-?/, '').replace(/^0+/, '');
+  if (num && n.replace(/^0+/, '') !== num && !(/^\d+$/.test(num) && digits(n) === num)) return false;
   if (tot && t && Number(t) !== Number(tot)) return false;
   // The listing names a set size (60/64) but this entry has none: it's a promo or reprint, not the set card.
   if (tot && !t && !/promo/i.test(card.title || '')) return false;
@@ -184,4 +192,12 @@ export async function pptSales(card) {
     median: clean.length ? clean[Math.floor((clean.length - 1) / 2)] : null, // lower median
     days: days.map(([d, v]) => `${d}: US$${Math.round(v.average)}${(v.count || 1) > 1 ? ` x${v.count}` : ''}`),
   };
+}
+
+const SETS = ['base set 2', 'base set', 'jungle', 'fossil', 'team rocket', 'gym heroes', 'gym challenge', 'neo genesis', 'neo discovery',
+  'neo revelation', 'neo destiny', 'legendary collection', 'expedition', 'aquapolis', 'skyridge', 'southern islands'];
+function setHint(title) {
+  const t = title.toLowerCase();
+  const hit = SETS.find(x => t.includes(x)) || (/\brocket\b/.test(t) ? 'team rocket' : null);
+  return hit;
 }

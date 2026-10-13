@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { loadConfig, log, sleep, jitter, Seen, appendJsonl, DATA } from './util.mjs';
 import { searchKijiji, kijijiDetail } from './sources/kijiji.mjs';
@@ -111,6 +112,15 @@ function rank(x) {
   return -Date.parse(x.postedAt || 0);
 }
 
+// On battery, run light (one check at a time, no Marketplace browser): full speed drained the
+// MacBook from 61% to 39% in 30 minutes. Checked at most once a minute.
+let batt = { at: 0, on: false };
+function onBattery() {
+  if (Date.now() - batt.at < 60e3) return batt.on;
+  try { batt = { at: Date.now(), on: /'Battery Power'/.test(execFileSync('pmset', ['-g', 'batt'], { encoding: 'utf8' })) }; } catch { batt.at = Date.now(); }
+  return batt.on;
+}
+
 let fbBusy = false; // one Marketplace page at a time: the bot's browser has a single tab
 let fbSweeping = false; // a sweep holds the browser profile; listing pages wait until it's done
 
@@ -120,7 +130,7 @@ async function drain(cfg) {
   // Judge for a few minutes at most, then let the searches run again; otherwise a long queue starves them.
   const until = Date.now() + (cfg.drainMinutes ?? 3) * 60e3;
   // Several checks run side by side: most of a check is waiting on eBay/PPT/Claude, not CPU.
-  const workers = Math.max(1, cfg.judgeWorkers ?? 3);
+  const workers = onBattery() ? 1 : Math.max(1, cfg.judgeWorkers ?? 3);
   await Promise.all(Array.from({ length: workers }, (_, i) => worker(cfg, until, i === 0)));
   if (queue.length) log(`drain paused, ${queue.length} waiting`);
 }
@@ -197,7 +207,7 @@ async function main() {
     if (c.kijiji.enabled && now >= nextKijiji) { await pollKijiji(c); nextKijiji = now + jitter(c.kijiji.everyMinutes * 60e3); }
     if (c.ebay.enabled && now >= nextEbay) { await pollEbay(c); nextEbay = now + jitter(c.ebay.everyMinutes * 60e3); }
     // Marketplace sweeps run in the background: a slow Chrome must never stall eBay checking.
-    if (c.facebook?.enabled && now >= nextFacebook && inActiveHours(c) && !fbSweeping) {
+    if (c.facebook?.enabled && now >= nextFacebook && inActiveHours(c) && !fbSweeping && !onBattery()) {
       fbSweeping = true;
       pollFacebook(c).finally(() => { fbSweeping = false; });
       nextFacebook = now + jitter(c.facebook.everyMinutes * 60e3, 0.3);

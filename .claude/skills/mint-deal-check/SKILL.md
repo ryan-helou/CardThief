@@ -87,3 +87,7 @@ Every false alarm had one price figure that disagreed with reality (wrong printi
 2. **Photo check** on Sonnet (label, grader, genuine slab).
 3. **Second check**: Sonnet gets the raw evidence (daily sales, live listings, description) and tries to prove the alert wrong; it must confirm, and its fair resale price must still clear the good-deal bar.
 4. Rule changes are replayed on every past alert first: `node scripts/backtest-alerts.mjs` (env `SHIP`, `OPTS` override shipping and buying options for ended listings).
+
+## Sell speed (since 2026-10-13)
+
+Weekly sales of that card+grade (PPT 7-day volume) set the margin: under ~1 sale/week a steal needs 70%+ ROI and a good deal 40%+ (config `slabs.slowPerWeek`, `slowStealRoi`, `slowGoodRoi`). Every alert states the expected time to sell (days / ~1–2 weeks / 2–4+ weeks).

@@ -54,8 +54,12 @@ export async function sweepFacebook(cfg) {
   const ctx = await openBrowser({ headless: cfg.facebook.headless });
   const page = ctx.pages()[0] || (await ctx.newPage());
   const found = new Map();
+  // Chrome sometimes crawls (one sweep took 58 minutes): cap the sweep and every step in it.
+  const deadline = Date.now() + (cfg.facebook.maxSweepMin ?? 8) * 60e3;
+  const capped = (p, ms, what) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`${what} timed out`)), ms))]);
   try {
     for (const q of cfg.facebook.queries) {
+      if (Date.now() > deadline) { log(`facebook sweep cut short at ${found.size} listings (over ${cfg.facebook.maxSweepMin ?? 8} min)`); break; }
       // One slow search shouldn't sink the whole sweep: skip it and keep going.
       try {
         await page.goto(searchUrl(cfg, q), { waitUntil: 'domcontentloaded', timeout: 90_000 });
@@ -65,10 +69,17 @@ export async function sweepFacebook(cfg) {
         continue;
       }
       await sleep(jitter(4000));
-      if (await loggedOut(page)) throw new Error('facebook: logged out — run `npm run fb-login`');
-      // Scroll a little, as a person would, so more tiles load.
-      for (let i = 0; i < 2; i++) { await page.mouse.wheel(0, 900 + Math.random() * 600); await sleep(jitter(1800)); }
-      const tiles = await readTiles(page);
+      let tiles;
+      try {
+        if (await capped(loggedOut(page), 20_000, 'login check')) throw new Error('facebook: logged out — run `npm run fb-login`');
+        // Scroll a little, as a person would, so more tiles load.
+        for (let i = 0; i < 2; i++) { await capped(page.mouse.wheel(0, 900 + Math.random() * 600), 20_000, 'scroll'); await sleep(jitter(1800)); }
+        tiles = await capped(readTiles(page), 30_000, 'reading results');
+      } catch (e) {
+        if (/logged out/.test(e.message)) throw e;
+        log(`facebook "${q}" skipped: ${e.message}`);
+        continue;
+      }
       for (const t of tiles) {
         if (found.has(t.id)) continue;
         const priceLine = t.lines.find(s => /\$|gratuit|free/i.test(s)) || t.lines[0];
@@ -92,7 +103,7 @@ export async function sweepFacebook(cfg) {
       await sleep(jitter(cfg.facebook.pauseBetweenQueriesSec * 1000));
     }
   } finally {
-    await ctx.close();
+    await capped(ctx.close(), 30_000, 'closing browser').catch(() => {});
   }
   return [...found.values()];
 }

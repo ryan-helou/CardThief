@@ -112,6 +112,7 @@ function rank(x) {
 }
 
 let fbBusy = false; // one Marketplace page at a time: the bot's browser has a single tab
+let fbSweeping = false; // a sweep holds the browser profile; listing pages wait until it's done
 
 async function drain(cfg) {
   trimQueue(cfg);
@@ -136,11 +137,11 @@ async function worker(cfg, until, lead) {
     const sonnetFull = sonnetAt.length >= cfg.maxJudgementsPerHour;
     // Over the sold-price budget pace: eBay slabs wait (newest first when it frees up) rather than be judged blind.
     const ebayOk = cfg.mode !== 'slabs' || pptPaced();
-    const pick = queue.findIndex(x => (x.source === 'ebay' && ebayOk) || (x.source !== 'ebay' && !fbBusy && !(sonnetFull && cfg.deepLocal !== false)));
+    const pick = queue.findIndex(x => (x.source === 'ebay' && ebayOk) || (x.source !== 'ebay' && !fbBusy && !(fbSweeping && x.source === 'facebook') && !(sonnetFull && cfg.deepLocal !== false)));
     if (pick < 0) {
       if (!ebayOk) { if (lead) log(`price-lookup budget paced, ${queue.length} waiting`); return; }
       if (sonnetFull && lead) log(`full-check cap reached, ${queue.length} local listings waiting`);
-      if (sonnetFull || !fbBusy) return;
+      if (sonnetFull || !fbBusy) return; // waiting on a sweep: let eBay polling run meanwhile
       await sleep(5000); continue; // another worker has the Marketplace tab
     }
     let l = queue.splice(pick, 1)[0];
@@ -195,7 +196,12 @@ async function main() {
     const now = Date.now();
     if (c.kijiji.enabled && now >= nextKijiji) { await pollKijiji(c); nextKijiji = now + jitter(c.kijiji.everyMinutes * 60e3); }
     if (c.ebay.enabled && now >= nextEbay) { await pollEbay(c); nextEbay = now + jitter(c.ebay.everyMinutes * 60e3); }
-    if (c.facebook?.enabled && now >= nextFacebook && inActiveHours(c)) { await pollFacebook(c); nextFacebook = now + jitter(c.facebook.everyMinutes * 60e3, 0.3); }
+    // Marketplace sweeps run in the background: a slow Chrome must never stall eBay checking.
+    if (c.facebook?.enabled && now >= nextFacebook && inActiveHours(c) && !fbSweeping) {
+      fbSweeping = true;
+      pollFacebook(c).finally(() => { fbSweeping = false; });
+      nextFacebook = now + jitter(c.facebook.everyMinutes * 60e3, 0.3);
+    }
     seen.save();
     if (stats.day !== today()) Object.assign(stats, { day: today(), judged: 0, deals: 0 });
     await beat(c);

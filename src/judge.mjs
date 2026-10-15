@@ -35,7 +35,7 @@ const isSealed = t => /\b(etb|elite trainer|booster box|booster bundle|display|t
 // ---------- Stage 1: identify a single card from the title, no AI ----------
 const NOISE = /\b(\d+(?:st|nd|rd|th)|anniv(?:ersary)?|celebrations?|gem|gem mint|pristine|sv\d+[a-z]?|s\d+[a-z]|swsh\d+|sm\d+[a-z]?|ssr|sar|ar|chr|csr|ur|hr|rr|pok[eé]mon|tcg|promo|japanese|jpn|jp|card|carte|cards|cartes|holo|reverse|rare|ultra|secret|full art|alt art|sir|sar|ir|near mint|nm|lp|mint|english|anglais|fr|en|psa|cgc|bgs|sgc|tag|ace|graded|slab|the|de|du|la|le|\d{4})\b/gi;
 export function parseTitle(t) {
-  const grade = t.match(/\b(PSA|CGC|BGS|SGC|TAG|ACE)\s*-?\s*(10|9\.5|9|8\.5|8|7\.5|7|6|5)\b/i);
+  const grade = t.match(/\b(PSA|CGC|BGS|SGC|TAG|ACE)\s*-?\s*(10|9\.5|9|8\.5|8|7\.5|7|6\.5|6|5\.5|5|4\.5|4|3\.5|3|2\.5|2|1\.5|1)(?![\d.\/])/i);
   const num = t.match(/\b(\d{1,3})\s*\/\s*(\d{2,3})\b/) || t.match(/\b(\d{1,3}\s*\/\s*(?:SV|SM|S|XY|BW|DP)-?P)\b/i) || t.match(/\b((?:SV|SWSH|SM|XY|BW)P?\s?-?\d{2,3})\b/i);
   const lang = /japan|japon|\bjp\b|jpn/i.test(t) ? 'jp' : /\bfr\b|fran[cç]ais|french/i.test(t) ? 'fr' : 'en';
   let name = null;

@@ -69,6 +69,7 @@ export async function searchEbay(cfg, query, since, fx) {
     const shipCad = ship ? toCad(ship.value, ship.currency, fx) : null;
     return {
       source: 'ebay',
+      raw: Boolean(query.raw), // from a raw-singles search: judged by the raw judge (shadow mode)
       id: `ebay:${it.legacyItemId || it.itemId}`,
       itemId: it.itemId,
       url: it.itemWebUrl,

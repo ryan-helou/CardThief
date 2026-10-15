@@ -7,6 +7,7 @@ import { searchEbay, ebayDetail, ebayReady } from './sources/ebay.mjs';
 import { sweepFacebook, facebookDetail, inActiveHours } from './sources/facebook.mjs';
 import { prefilter, judge, aiUsage } from './judge.mjs';
 import { judgeSlab } from './slabs.mjs';
+import { judgeRaw } from './raw.mjs';
 import { pptPaced } from './ppt.mjs';
 import { toDeal, sendDeal, heartbeat, retryPendingDeals } from './notify.mjs';
 import { getFx } from './price.mjs';
@@ -57,11 +58,16 @@ async function pollKijiji(cfg) {
   }
 }
 
+const lastRun = {};
 async function pollEbay(cfg) {
   if (!ebayReady(cfg)) return;
   const fx = await getFx();
   for (const q of cfg.ebay.queries) {
+    if (q.enabled === false || (q.raw && !cfg.raw?.enabled)) continue;
     const key = `ebay:${q.q}:${q.filter}`;
+    // Some searches run less often than every loop (raw singles: lots of listings, mostly not deals).
+    if (q.everyMinutes && Date.now() - (lastRun[key] || 0) < q.everyMinutes * 60e3) continue;
+    lastRun[key] = Date.now();
     const since = new Date(state[key] || Date.now() - cfg.firstRunLookbackHours * 3600e3);
     const started = new Date();
     try {
@@ -96,8 +102,9 @@ function trimQueue(cfg) {
   const max = cfg.maxQueue ?? 300;
   if (queue.length <= max) return;
   const local = queue.filter(x => x.source !== 'ebay');
-  const ebay = queue.filter(x => x.source === 'ebay').sort((a, b) => new Date(b.postedAt) - new Date(a.postedAt));
-  const keep = [...local, ...ebay].slice(0, max);
+  const newest = xs => xs.sort((a, b) => new Date(b.postedAt) - new Date(a.postedAt));
+  // Raw singles (shadow test) are kept last: they must never push a slab out of the queue.
+  const keep = [...local, ...newest(queue.filter(x => x.source === 'ebay' && !x.raw)), ...newest(queue.filter(x => x.raw)).slice(0, cfg.raw?.maxQueue ?? 150)].slice(0, max);
   log(`queue trimmed: ${queue.length} → ${keep.length} (kept the newest)`);
   queue.splice(0, queue.length, ...keep);
 }
@@ -131,11 +138,11 @@ async function drain(cfg) {
   const until = Date.now() + (cfg.drainMinutes ?? 3) * 60e3;
   // Several checks run side by side: most of a check is waiting on eBay/PPT/Claude, not CPU.
   const workers = onBattery() ? 1 : Math.max(1, cfg.judgeWorkers ?? 3);
-  await Promise.all(Array.from({ length: workers }, (_, i) => worker(cfg, until, i === 0)));
+  await Promise.all(Array.from({ length: workers }, (_, i) => worker(cfg, until, i === 0, workers > 1 && i === workers - 1)));
   if (queue.length) log(`drain paused, ${queue.length} waiting`);
 }
 
-async function worker(cfg, until, lead) {
+async function worker(cfg, until, lead, rawFirst = false) {
   while (queue.length && Date.now() < until && Date.now() >= judgePausedUntil) {
     if (lead) { await processOutbox(); await beat(cfg); }
     const hourAgo = Date.now() - 3600e3;
@@ -143,6 +150,8 @@ async function worker(cfg, until, lead) {
     while (sonnetAt.length && sonnetAt[0] < hourAgo) sonnetAt.shift();
     if (judgedAt.length >= (cfg.maxTriagePerHour || cfg.maxJudgementsPerHour)) { if (lead) log(`judge budget hit, ${queue.length} waiting`); return; }
     queue.sort((a, b) => rank(a) - rank(b));
+    // One worker looks at raw singles first; the rest keep slabs first (raw never slows the slab hunt).
+    queue.sort((a, b) => (rawFirst ? (b.raw ? 1 : 0) - (a.raw ? 1 : 0) : (a.raw ? 1 : 0) - (b.raw ? 1 : 0)));
     // When the hourly full-check cap is used up, local listings (which always need one) wait; eBay keeps going.
     const sonnetFull = sonnetAt.length >= cfg.maxJudgementsPerHour;
     // Over the sold-price budget pace: eBay slabs wait (newest first when it frees up) rather than be judged blind.
@@ -162,7 +171,9 @@ async function worker(cfg, until, lead) {
       // Kijiji pages are a cheap HTTP fetch; Marketplace pages need a browser, so they're opened only for Stage 3.
       if (l.source === 'kijiji') l = await kijijiDetail(l);
       if (l.source === 'ebay' && cfg.mode !== 'slabs') l = await ebayDetail(cfg, l, await getFx());
-      const r = cfg.mode === 'slabs' && l.source === 'ebay'
+      const r = l.raw
+        ? await judgeRaw(cfg, l)
+        : cfg.mode === 'slabs' && l.source === 'ebay'
         ? await judgeSlab(cfg, l)
         : await judge(cfg, l, { allowStage3: sonnetAt.length < cfg.maxJudgementsPerHour, detail: fb ? x => facebookDetail(cfg, x) : null });
       if (r.stage === 3) sonnetAt.push(Date.now());
@@ -173,7 +184,11 @@ async function worker(cfg, until, lead) {
       const rec = { at: new Date().toISOString(), photo: l.images?.[0] || null, stage: r.stage, aiCalls: aiUsage.calls, aiUsd: +aiUsage.usd.toFixed(4), id: l.id, url: l.url, title: l.title, price: l.priceCad, tier: r.tier, profit: +r.profit.toFixed(2), roi: +r.roi.toFixed(2), resale: +r.resale.toFixed(2), kind: r.ident.kind, fakeRisk: r.ident.fakeRisk, lines: r.lines, summary: r.ident.summary, askSeller: r.ident.askSeller, postedAt: l.postedAt || null, itemId: l.itemId || null };
       appendJsonl('judged', rec);
       log(`${r.tier.toUpperCase().padEnd(5)} s${r.stage} ${l.id} $${l.priceCad} → profit $${r.profit.toFixed(0)} (${Math.round(r.roi * 100)}%) ${l.title}`);
-      if (r.tier !== 'pass') {
+      // Shadow test: a raw "deal" is logged for review, never sent to the phone.
+      if (r.tier !== 'pass' && l.raw && cfg.raw?.shadow !== false) {
+        appendJsonl('raw-shadow', rec);
+        log(`RAW-SHADOW ${r.tier} ${l.id} $${l.priceCad} → profit $${r.profit.toFixed(0)} ${l.title}`);
+      } else if (r.tier !== 'pass') {
         appendJsonl('deals', rec);
         stats.deals++;
         await sendDeal(toDeal(l, r));

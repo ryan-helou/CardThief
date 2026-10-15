@@ -179,7 +179,7 @@ export async function pptSales(card) {
     hit = { at: Date.now(), c: pickPrinting(list.filter(c => matches(c, card)), card.title || '') };
     salesCache.set(key, hit);
   }
-  const days = Object.entries(hit.c?.ebay?.priceHistory?.[gradeKey(card.grade)] || {})
+  const days = Object.entries(hit.c?.ebay?.priceHistory?.[card.grade ? gradeKey(card.grade) : 'ungraded'] || {})
     .filter(([d]) => Date.parse(d) >= Date.now() - 30 * 864e5).sort(([a], [b]) => a.localeCompare(b));
   const sales = days.flatMap(([, v]) => Array(Math.max(1, v.count || 1)).fill(v.average)).filter(x => x > 0);
   const sorted = [...sales].sort((a, b) => a - b);

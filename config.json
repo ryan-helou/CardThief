@@ -1,7 +1,7 @@
 {
   "kijiji": {
-    "enabled": false,
-    "everyMinutes": 4,
+    "enabled": true,
+    "everyMinutes": 10,
     "searches": [
       "https://www.kijiji.ca/b-grand-montreal/pokemon/k0l80002?sort=dateDesc",
       "https://www.kijiji.ca/b-grand-montreal/cartes-pokemon/k0l80002?sort=dateDesc"

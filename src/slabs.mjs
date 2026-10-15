@@ -78,6 +78,9 @@ export async function judgeSlab(cfg, l) {
   const m = cfg.money;
   const fx = await getFx();
   if (/korean|chinese|s-chinese|t-chinese/i.test(l.title)) return pass('Korean/Chinese slab (no sold data)');
+  // PSA qualifiers (MK miscut, OC off-center, ST stain, PD print defect, MC, OF) sell far below the plain grade,
+  // and sold data doesn't separate them: "PSA 1 MK Dragonite ex" was read as a PSA 9 from the item specifics.
+  if (/\b(PSA|CGC|BGS)\s*\d+(\.\d)?\s*\(?(MK|OC|ST|PD|MC|OF)\)?(?![a-z])/i.test(l.title)) return pass('qualified grade (MK/OC/ST/PD): no reliable sold data');
   let japanese = /japan|japon|\bjp\b|jpn/i.test(l.title);
   if (japanese && !s.allowJapanese) return pass('Japanese slab (turned off)');
   // Item specifics (grader/grade fields, all photos) only when the title lacks a grade: saves eBay calls.

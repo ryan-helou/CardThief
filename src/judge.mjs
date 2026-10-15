@@ -142,7 +142,7 @@ Return:
 - summary: one plain sentence on what this is and whether it looks underpriced.
 Be conservative: if you can't read a card, don't guess an expensive one.`;
 
-async function downloadImages(l, max = 4) {
+export async function downloadImages(l, max = 4) {
   const dir = path.join(DATA, 'img', l.id.replace(/[^a-z0-9]+/gi, '_'));
   fs.mkdirSync(dir, { recursive: true });
   let n = 0;

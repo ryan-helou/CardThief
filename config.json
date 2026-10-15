@@ -37,6 +37,14 @@
         "q": "pokemon",
         "categoryIds": "183454",
         "filter": "conditionIds:{2750},deliveryCountry:CA,buyingOptions:{BEST_OFFER}"
+      },
+      {
+        "label": "Raw singles shipping to Canada (Buy It Now, shadow test)",
+        "q": "pokemon",
+        "categoryIds": "183454",
+        "filter": "conditionIds:{4000},deliveryCountry:CA,buyingOptions:{FIXED_PRICE},price:[20..500],priceCurrency:CAD",
+        "raw": true,
+        "everyMinutes": 3
       }
     ]
   },
@@ -122,5 +130,14 @@
   "maxQueue": 600,
   "judgeWorkers": 4,
   "pptMinCad": 3,
-  "deepLocal": true
+  "deepLocal": true,
+  "raw": {
+    "enabled": true,
+    "shadow": true,
+    "minNmCad": 50,
+    "minSales30": 5,
+    "minPhotos": 2,
+    "resaleShipCad": 6,
+    "maxQueue": 150
+  }
 }

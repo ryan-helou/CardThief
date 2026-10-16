@@ -169,3 +169,10 @@ export async function finishQuote(id: number, result: QuoteResult, failed: boole
 export async function deleteQuote(id: number) {
   await q(`DELETE FROM quotes WHERE id = $1`, [id]);
 }
+export async function markGone(id: string, why: string): Promise<boolean> {
+  const rows = await q<{ id: string }>(
+    `UPDATE deals SET status = 'passed', data = data || jsonb_build_object('gone', $2::text), updated_at = now() WHERE id = $1 AND status = 'new' RETURNING id`,
+    [id, why],
+  );
+  return rows.length > 0;
+}

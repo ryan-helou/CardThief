@@ -83,7 +83,7 @@ export function buildReport(cfg, live) {
     today: { found: judged.length + skipped.length, skipped: skipped.length, judged: judged.length, deals: judged.filter(r => r.tier !== 'pass').length, stages, bySource, reasons },
     week: week.filter(d => d.day >= weekSince.slice(0, 10)),
     nearMisses, recent,
-    outcomes: Object.entries(outcomes()).map(([id, o]) => ({ id, ...o })).sort((a, b) => b.alertedAt.localeCompare(a.alertedAt)).slice(0, 20),
+    outcomes: Object.entries(outcomes()).filter(([id]) => id.startsWith('ebay:')).map(([id, o]) => ({ id, ...o })).sort((a, b) => b.alertedAt.localeCompare(a.alertedAt)).slice(0, 20),
     budgets: {
       pptLeft: ppt && Date.now() < ppt.resetAt ? ppt.remaining : (ppt?.limit || 100), pptMax: ppt?.limit || 100,
       ebayCalls: ebayCallsToday(), ebayMax: 5000,

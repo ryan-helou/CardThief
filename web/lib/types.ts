@@ -7,6 +7,7 @@ export interface DealLine {
 }
 
 export interface Deal {
+  gone?: string; // why the Mac closed it (listing sold or ended, local alert a week old)
   id: string; // "kijiji:123" | "ebay:456"
   source: "kijiji" | "ebay" | "facebook";
   url: string;

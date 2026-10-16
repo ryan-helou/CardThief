@@ -1,4 +1,4 @@
-import { createQuote, listQuotes, quotesToday } from "@/lib/db";
+import { createQuote, deleteQuote, listQuotes, quotesToday } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -22,4 +22,11 @@ export async function POST(req: Request) {
   const note = typeof body.note === "string" ? body.note.slice(0, 1000) : null;
   const id = await createQuote(note, Number.isFinite(asking) ? asking : null, photos);
   return Response.json({ ok: true, id });
+}
+
+export async function DELETE(req: Request) {
+  const id = Number(new URL(req.url).searchParams.get("id"));
+  if (!Number.isInteger(id)) return Response.json({ error: "id required" }, { status: 400 });
+  await deleteQuote(id);
+  return Response.json({ ok: true });
 }

@@ -104,7 +104,7 @@
     }
   },
   "titleMustMatch": "carte|cards?|lot|classeur|cartable|binder|collection|vrac|bulk|holo|psa|cgc|bgs|\\bex\\b|\\bgx\\b|vmax|vstar|booster|etb|display|rare|foil|full art|alt art|\\bsir\\b|\\bsar\\b|promo|graded|slab|tcg|charizard|dracaufeu|pikachu|umbreon|noctali|mewtwo|lugia|rayquaza|gengar|ectoplasma",
-  "titleExclude": "\\b(ds|3ds|switch|wii|gameboy|game boy|jeu vid[eé]o|video game|funko|pop!|figurine|figure|puzzle|casse-t[eê]te|lego|toutou|peluche|plush|tumbler|chandail|shirt|t-shirt|tank top|hoodie|magazine|yahtzee|monopoly|costume|sac|backpack|lampe|poster|affiche|wall art|build a bear|soulsilver|nintendo|n64|gamecube|game lot|stadium|enamel pin|pin lot|pins|code cards?|empty|vide|zipper|4-pocket|9-pocket|12-pocket|portfolio|binder only|classeur vide|heartgold|platinum|emerald|sapphire|ruby|chn|chinese|simplified chinese|korean|kor)\\b",
+  "titleExclude": "\\b(ds|3ds|switch|wii|gameboy|game boy|jeu vid[eé]o|video game|funko|pop!|figurines?|figures?|toys?|jouets?|happy meal|mcdonald'?s?|peluches?|puzzle|casse-t[eê]te|lego|toutou|peluche|plush|tumbler|chandail|shirt|t-shirt|tank top|hoodie|magazine|yahtzee|monopoly|costume|sac|backpack|lampe|poster|affiche|wall art|build a bear|soulsilver|nintendo|n64|gamecube|game lot|stadium|enamel pin|pin lot|pins|code cards?|empty|vide|zipper|4-pocket|9-pocket|12-pocket|portfolio|binder only|classeur vide|heartgold|platinum|emerald|sapphire|ruby|chn|chinese|simplified chinese|korean|kor)\\b",
   "maxDistanceKm": 80,
   "maxMessagesPerDay": 8,
   "minPriceCad": 0,

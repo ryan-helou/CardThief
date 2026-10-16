@@ -91,3 +91,7 @@ Every false alarm had one price figure that disagreed with reality (wrong printi
 ## Sell speed (since 2026-10-13)
 
 Weekly sales of that card+grade (PPT 7-day volume) set the margin: under ~1 sale/week a steal needs 70%+ ROI and a good deal 40%+ (config `slabs.slowPerWeek`, `slowStealRoi`, `slowGoodRoi`). Every alert states the expected time to sell (days / ~1–2 weeks / 2–4+ weeks).
+
+## Local lots and collections (since 2026-10-15)
+
+Marketplace/Kijiji listings get up to 12 photos read. A local alert needs at least 60% of its resale value priced from real data (catalog or sold prices, not Claude's estimate) and must pass a skeptical second check. Collections priced too high but worth it at a realistic offer (offer ≥ 65% of asking, `local.minOfferRatio`) alert as "offer" with the offer in the drafted message. The app's Quote tab values collections Ryan photographs in person (resale, max to pay at the good bar, steal price), capped at 20 quotes/day.

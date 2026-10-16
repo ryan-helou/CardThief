@@ -13,6 +13,7 @@ const cacheFile = path.join(DATA, 'ppt-cache.json');
 const TTL = 24 * 3600e3;
 const disk = (() => { try { return JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch { return {}; } })();
 let dirty = 0;
+let lastSave = Date.now();
 const slim = list => list && list.map(c => ({ id: c.id, name: c.name, setName: c.setName, cardNumber: c.cardNumber, prices: { market: c.prices?.market }, ebay: { salesByGrade: c.ebay?.salesByGrade } }));
 const cache = {
   has: k => Boolean(disk[k] && Date.now() - disk[k].at < TTL),
@@ -21,7 +22,10 @@ const cache = {
 function put(k, list) {
   if (!list) return; // a failed lookup (network) is retried next time, not remembered
   disk[k] = { at: Date.now(), list: slim(list) };
-  if (++dirty % 10 === 0) {
+  dirty++;
+  // The cache runs to tens of MB: write it every few minutes, not on every lookup.
+  if (Date.now() - lastSave > 5 * 60e3) {
+    lastSave = Date.now();
     for (const [key, v] of Object.entries(disk)) if (Date.now() - v.at > TTL) delete disk[key];
     fs.writeFileSync(cacheFile, JSON.stringify(disk));
   }

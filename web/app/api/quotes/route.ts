@@ -1,5 +1,5 @@
 import { isOwner } from "@/lib/auth";
-import { createQuote, deleteQuote, listQuotes, quotesToday } from "@/lib/db";
+import { createQuote, deleteQuote, listQuotes, quotesToday, setLead, type Lead } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -29,5 +29,15 @@ export async function DELETE(req: Request) {
   const id = Number(new URL(req.url).searchParams.get("id"));
   if (!Number.isInteger(id)) return Response.json({ error: "id required" }, { status: 400 });
   await deleteQuote(id);
+  return Response.json({ ok: true });
+}
+
+// Lead pipeline for seller submissions: Ryan's own device only.
+const LEADS: Lead[] = ["new", "contacted", "offered", "bought", "passed"];
+export async function PATCH(req: Request) {
+  if (!isOwner(req.headers.get("cookie"))) return Response.json({ error: "Open your owner link on this device first." }, { status: 403 });
+  const b = (await req.json().catch(() => ({}))) as { id?: number; lead?: Lead; paid?: number | null };
+  if (typeof b.id !== "number" || !b.lead || !LEADS.includes(b.lead)) return Response.json({ error: "id and lead required" }, { status: 400 });
+  await setLead(b.id, b.lead, typeof b.paid === "number" && Number.isFinite(b.paid) ? b.paid : null);
   return Response.json({ ok: true });
 }

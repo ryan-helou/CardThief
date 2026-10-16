@@ -29,7 +29,9 @@ function db(): Pool {
          CREATE TABLE IF NOT EXISTS push_subs (endpoint text PRIMARY KEY, keys jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
          CREATE TABLE IF NOT EXISTS quotes (id serial PRIMARY KEY, note text, asking numeric, photos jsonb, status text NOT NULL DEFAULT 'pending', result jsonb, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
          ALTER TABLE quotes ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'ryan';
-         ALTER TABLE quotes ADD COLUMN IF NOT EXISTS contact jsonb;`,
+         ALTER TABLE quotes ADD COLUMN IF NOT EXISTS contact jsonb;
+         ALTER TABLE quotes ADD COLUMN IF NOT EXISTS lead text NOT NULL DEFAULT 'new';
+         ALTER TABLE quotes ADD COLUMN IF NOT EXISTS paid numeric;`,
       )
       .then(() => undefined);
   }
@@ -135,7 +137,8 @@ export async function setMessageResult(id: string, state: "sent" | "failed", err
 
 // ---------- Quotes: Ryan photographs a binder/collection, the Mac values it ----------
 export type SellerContact = { name: string; contact: string; city: string; lang: "fr" | "en" };
-export type Quote = { id: number; note: string | null; asking: number | null; status: "pending" | "working" | "done" | "failed"; result: QuoteResult | null; createdAt: string; photoCount: number; source: "ryan" | "seller"; contact: SellerContact | null };
+export type Quote = { id: number; note: string | null; asking: number | null; status: "pending" | "working" | "done" | "failed"; result: QuoteResult | null; createdAt: string; photoCount: number; source: "ryan" | "seller"; contact: SellerContact | null; lead: Lead; paid: number | null };
+export type Lead = "new" | "contacted" | "offered" | "bought" | "passed";
 export type QuoteResult = {
   summary: string; totalCards: number | null; photosRead?: number; resale: number; marketTotal: number; offerSteal: number; offerGood: number;
   profitAtAsking: number | null; lines: { label: string; marketCad: number; netCad: number; basis: string }[]; askSeller: string; fakeRisk: string; error?: string;
@@ -151,12 +154,12 @@ export async function quotesToday(source: "ryan" | "seller" = "ryan"): Promise<n
 }
 // Sellers' contact details only go to Ryan's own device (owner cookie); the app itself is open.
 export async function listQuotes(owner: boolean): Promise<Quote[]> {
-  const rows = await q<{ id: number; note: string | null; asking: string | null; status: Quote["status"]; result: QuoteResult | null; created_at: Date; n: number; source: Quote["source"]; contact: SellerContact | null }>(
-    `SELECT id, note, asking, status, result, created_at, source, contact, COALESCE(jsonb_array_length(photos), (result->>'photoCount')::int, 0) AS n FROM quotes ORDER BY id DESC LIMIT 25`,
+  const rows = await q<{ id: number; note: string | null; asking: string | null; status: Quote["status"]; result: QuoteResult | null; created_at: Date; n: number; source: Quote["source"]; contact: SellerContact | null; lead: Lead; paid: string | null }>(
+    `SELECT id, note, asking, status, result, created_at, source, contact, lead, paid, COALESCE(jsonb_array_length(photos), (result->>'photoCount')::int, 0) AS n FROM quotes ORDER BY id DESC LIMIT 25`,
   );
   return rows
     .filter((r) => owner || r.source === "ryan")
-    .map((r) => ({ id: r.id, note: r.note, asking: r.asking == null ? null : Number(r.asking), status: r.status, result: r.result, createdAt: r.created_at.toISOString(), photoCount: r.n, source: r.source, contact: owner ? r.contact : null }));
+    .map((r) => ({ id: r.id, note: r.note, asking: r.asking == null ? null : Number(r.asking), status: r.status, result: r.result, createdAt: r.created_at.toISOString(), photoCount: r.n, source: r.source, contact: owner ? r.contact : null, lead: r.lead, paid: r.paid == null ? null : Number(r.paid) }));
 }
 // The Mac claims pending quotes one at a time.
 export async function claimQuote(): Promise<{ id: number; note: string | null; asking: number | null; photos: string[] } | null> {
@@ -186,4 +189,7 @@ export async function markGone(id: string, why: string): Promise<boolean> {
     [id, why],
   );
   return rows.length > 0;
+}
+export async function setLead(id: number, lead: Lead, paid: number | null) {
+  await q(`UPDATE quotes SET lead = $2, paid = COALESCE($3, paid), updated_at = now() WHERE id = $1`, [id, lead, paid]);
 }

@@ -101,10 +101,11 @@ export function QuoteTool() {
         </button>
       </section>
 
+      <Pipeline quotes={quotes} />
       {quotes.length > 0 && (
         <section className="space-y-2">
           <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">Recent quotes</h2>
-          {quotes.map((q) => <QuoteCard key={q.id} q={q} onDelete={async () => { await fetch(`/api/quotes?id=${q.id}`, { method: "DELETE" }); load(); }} />)}
+          {quotes.map((q) => <QuoteCard key={q.id} q={q} onChange={load} onDelete={async () => { await fetch(`/api/quotes?id=${q.id}`, { method: "DELETE" }); load(); }} />)}
         </section>
       )}
     </div>
@@ -119,7 +120,7 @@ function offerText(r: NonNullable<Quote["result"]>, fr: boolean) {
     : `Hi! I went through the collection${top ? ` (${top}...)` : ""}. I could offer $${Math.round(r.offerSteal)} cash and pick it up quickly. Would that work for you?`;
 }
 
-function QuoteCard({ q, onDelete }: { q: Quote; onDelete: () => void }) {
+function QuoteCard({ q, onDelete, onChange }: { q: Quote; onDelete: () => void; onChange: () => void }) {
   const r = q.result;
   const [copied, setCopied] = useState("");
   const copy = async (fr: boolean) => { if (!r) return; await navigator.clipboard.writeText(offerText(r, fr)).catch(() => {}); setCopied(fr ? "fr" : "en"); setTimeout(() => setCopied(""), 2000); };
@@ -165,6 +166,7 @@ function QuoteCard({ q, onDelete }: { q: Quote; onDelete: () => void }) {
             {r.askSeller && <p className="mt-2 text-[var(--ink-2)]">❓ {r.askSeller}</p>}
           </details>
           {/* An offer far below asking just insults the seller: say so instead. */}
+          {q.source === "seller" && q.contact && <LeadBar q={q} onChange={onChange} />}
           {r.offerSteal > 0 && q.asking != null && r.offerSteal < q.asking * 0.4 && (
             <p className="mt-2 text-sm text-[var(--ink-3)]">Not worth an offer: a fair-to-you price is under 40% of what they ask.</p>
           )}
@@ -177,5 +179,51 @@ function QuoteCard({ q, onDelete }: { q: Quote; onDelete: () => void }) {
         </>
       )}
     </article>
+  );
+}
+
+const STEPS: { id: Quote["lead"]; label: string }[] = [
+  { id: "new", label: "New" }, { id: "contacted", label: "Contacted" }, { id: "offered", label: "Offer sent" }, { id: "bought", label: "Bought" }, { id: "passed", label: "Passed" },
+];
+// Where this seller stands, so no collection falls through the cracks. "Bought" asks what was paid.
+function LeadBar({ q, onChange }: { q: Quote; onChange: () => void }) {
+  const [paid, setPaid] = useState(q.paid != null ? String(q.paid) : "");
+  const set = async (lead: Quote["lead"]) => {
+    await fetch("/api/quotes", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: q.id, lead, paid: lead === "bought" && paid ? Number(paid) : null }) });
+    onChange();
+  };
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {STEPS.map((s) => (
+          <button key={s.id} type="button" onClick={() => set(s.id)} className={`rounded-full border px-2.5 py-1 text-xs ${q.lead === s.id ? "border-[var(--accent)] bg-[var(--accent)] font-semibold text-white" : "border-[var(--rule)] text-[var(--ink-2)]"}`}>{s.label}</button>
+        ))}
+      </div>
+      {(q.lead === "offered" || q.lead === "bought") && (
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-[var(--ink-2)]">Paid</span>
+          <input value={paid} onChange={(e) => setPaid(e.target.value.replace(/[^\d.]/g, ""))} onBlur={() => q.lead === "bought" && paid && set("bought")} inputMode="decimal" placeholder="C$" className="w-24 rounded-lg border border-[var(--rule)] bg-transparent px-2 py-1 num" />
+          {q.lead === "offered" && <button type="button" onClick={() => set("bought")} className="text-[var(--accent)]">Mark bought</button>}
+        </label>
+      )}
+    </div>
+  );
+}
+
+// Seller pipeline at a glance (only sellers whose details this device can see).
+function Pipeline({ quotes }: { quotes: Quote[] }) {
+  const leads = quotes.filter((q) => q.source === "seller" && q.contact);
+  if (!leads.length) return null;
+  const n = (l: Quote["lead"]) => leads.filter((q) => q.lead === l).length;
+  const bought = leads.filter((q) => q.lead === "bought");
+  const paid = bought.reduce((a, q) => a + (q.paid ?? 0), 0);
+  const worth = bought.reduce((a, q) => a + (q.result?.resale ?? 0), 0);
+  return (
+    <section className="grid grid-cols-4 gap-2 rounded-2xl border border-[var(--rule)] bg-[var(--surface)] p-3 text-center num">
+      <div><p className="font-semibold">{n("new")}</p><p className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">New</p></div>
+      <div><p className="font-semibold">{n("contacted") + n("offered")}</p><p className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">In talks</p></div>
+      <div><p className="font-semibold">{bought.length}</p><p className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">Bought</p></div>
+      <div><p className="font-semibold text-[var(--good)]">{money(worth - paid)}</p><p className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">Expected profit</p></div>
+    </section>
   );
 }

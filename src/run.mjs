@@ -16,6 +16,8 @@ import { processOutbox } from './outbox.mjs';
 import { buildReport } from './report.mjs';
 import { trackOutcomes } from './outcomes.mjs';
 import { processQuotes } from './quotes.mjs';
+import { logOdds } from './odds.mjs';
+import { getToken } from './sources/ebay.mjs';
 
 const ONCE = process.argv.includes('--once');
 const seen = new Seen('seen');
@@ -234,6 +236,7 @@ async function main() {
     await retryPendingDeals();
     await processOutbox();
     processQuotes(c);
+    if (ebayReady(c)) logOdds(c, getToken).catch(e => log('odds failed', e.message));
     if (ebayReady(c)) await trackOutcomes(c).catch(e => log('outcomes failed', e.message));
     await drain(c);
     await beat(c);

@@ -18,10 +18,13 @@ export function prefilter(cfg, l) {
   if (/\b(recherche|cherche|wanted|looking for|j'ach[eè]te|achat|buying|besoin d)/i.test(l.title)) return 'wanted/buyer post';
   if (!fb && !new RegExp(cfg.titleMustMatch, 'i').test(text)) return 'no card keywords';
   if (l.priceCad == null) return l.priceType === 'CONTACT' ? 'no price (contact)' : 'no price';
-  if (l.priceCad <= 0) return 'free/zero price';
+  // A local "free" or C$0 price is usually a placeholder for "ask me": keep those, the judge treats them as price on request.
+  if (l.priceCad <= 0 && l.source === 'ebay') return 'free/zero price';
   const auction = l.buyingOptions?.includes('AUCTION') && !l.buyingOptions?.includes('FIXED_PRICE');
   if (!auction && l.priceCad < (cfg.minPriceCad ?? 20)) return `under C$${cfg.minPriceCad ?? 20} ($${l.priceCad})`;
-  if (l.priceCad > cfg.maxBuyCad) return `over max buy ($${l.priceCad})`;
+  // Local collections run bigger than single slabs: they get their own ceiling.
+  const maxBuy = l.source === 'ebay' ? cfg.maxBuyCad : (cfg.local?.maxBuyCad ?? cfg.maxBuyCad);
+  if (l.priceCad > maxBuy) return `over max buy ($${l.priceCad})`;
   // eBay from outside Canada: only lots survive the 20–35% cross-border costs.
   const slabs = cfg.mode === 'slabs';
   if (l.source === 'ebay' && !slabs && ['JP', 'CN', 'KR', 'HK', 'TW'].includes(l.country)) return 'ships from Asia';
@@ -369,8 +372,8 @@ export async function judge(cfg, l, { allowStage3 = true, detail = null } = {}) 
     let v = await value(cfg, l, ident);
     // Promising or vintage collections get the photo-by-photo read before deciding: one call over many
     // reduced photos misses about half the cards.
-    if (deep && n >= 2 && (['lot', 'mixed'].includes(ident.kind) || (ident.totalCardCount || 0) > 15)
-      && (v.resale >= 0.3 * v.price || /vintage|wotc|1st|1re|base set|shadowless|holo|vieille|old|collection|classeur|binder/i.test(`${l.title} ${l.description || ''}`))) {
+    // Every local collection gets the photo-by-photo read (lots are the core business); singles don't need it.
+    if (deep && n >= 2 && (['lot', 'mixed'].includes(ident.kind) || (ident.totalCardCount || 0) > 15)) {
       const d = await readPhotosDeep(cfg, l, dir);
       ident = withDeep(ident, d);
       v = await value(cfg, l, ident);
@@ -404,6 +407,14 @@ async function localDecision(cfg, l, ident, v) {
     && v.offer < v.price && v.offer >= v.price * (lc.minOfferRatio ?? 0.65)
     && offerProfit >= good.minProfitCad && offerProfit / v.offer >= good.minRoi) {
     out = { ...out, tier: offerProfit >= steal.minProfitCad && offerProfit / v.offer >= steal.minRoi ? 'steal' : 'good', action: 'offer' };
+  }
+  // "C$1" placeholder on a valuable collection = price on request. Not a buy yet, but a lead worth one message.
+  if (out.tier === 'pass' && v.placeholder && ident.isPokemonCards && ident.fakeRisk === 'low' && ident.priceScope !== 'catalog'
+    && ['lot', 'mixed', 'graded'].includes(ident.kind) && v.resale >= (lc.minAskResale ?? 150) && v.backedShare >= (lc.minBackedShare ?? 0.6)) {
+    const fr = /\b(cartes?|classeur|collection|vends|à vendre|les|des|et|avec)\b/i.test(`${l.title} ${l.description || ''}`);
+    const pay = Math.floor(v.resale / (1 + good.minRoi) / 5) * 5;
+    return { ...out, tier: 'good', action: 'ask', offer: pay, price: 0, cost: 0, profit: v.resale - pay, roi: pay > 0 ? (v.resale - pay) / pay : 0,
+      draft: fr ? 'Bonjour! Les cartes sont toujours disponibles? Quel serait votre prix pour tout le lot? Je peux passer rapidement et payer comptant.' : 'Hi! Are the cards still available? What would you take for the whole lot? I can pick up quickly and pay cash.' };
   }
   if (out.tier === 'pass') return out;
   const reject = why => ({ ...out, tier: 'pass', rejected: why });

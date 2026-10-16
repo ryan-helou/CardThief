@@ -32,7 +32,7 @@ export interface Deal {
   askSeller?: string;
   offer?: number;
   compsQueries?: string[];
-  action?: "buy" | "offer" | "auction";
+  action?: "buy" | "offer" | "auction" | "ask";
   grade?: string | null;
   draft?: string; // opener the bot can send for Ryan
   bids?: number | null;

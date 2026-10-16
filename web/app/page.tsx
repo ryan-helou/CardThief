@@ -60,7 +60,9 @@ function DealCard({ r }: { r: DealRow }) {
             {d.title}
           </a>
           <p className="mt-0.5 text-sm text-[var(--ink-2)] num">
-            {d.action === "offer" ? (
+            {d.action === "ask" ? (
+              <span className="font-medium text-[var(--accent)]">Price on request · worth ~{money(d.resale)} · pay up to {money(d.offer)}</span>
+            ) : d.action === "offer" ? (
               <span className="font-medium text-[var(--accent)]">Offer {money(d.offer)} (asking {money(d.price)})</span>
             ) : d.action === "auction" ? (
               <span className="font-medium text-[var(--accent)]">

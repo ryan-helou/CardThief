@@ -4,7 +4,10 @@
     "everyMinutes": 10,
     "searches": [
       "https://www.kijiji.ca/b-grand-montreal/pokemon/k0l80002?sort=dateDesc",
-      "https://www.kijiji.ca/b-grand-montreal/cartes-pokemon/k0l80002?sort=dateDesc"
+      "https://www.kijiji.ca/b-grand-montreal/cartes-pokemon/k0l80002?sort=dateDesc",
+      "https://www.kijiji.ca/b-grand-montreal/classeur-pokemon/k0l80002?sort=dateDesc",
+      "https://www.kijiji.ca/b-grand-montreal/collection-pokemon/k0l80002?sort=dateDesc",
+      "https://www.kijiji.ca/b-grand-montreal/lot-cartes-pokemon/k0l80002?sort=dateDesc"
     ]
   },
   "ebay": {
@@ -68,12 +71,17 @@
       "vieilles cartes pokemon",
       "pokemon 1st edition",
       "pokemon base set",
-      "pokemon wotc"
-    ]
+      "pokemon wotc",
+      "boite cartes pokemon",
+      "pokemon binder",
+      "old pokemon cards",
+      "cartes pokemon a vendre"
+    ],
+    "maxSweepMin": 12
   },
   "firstRunLookbackHours": 24,
   "maxBuyCad": 500,
-  "maxJudgementsPerHour": 40,
+  "maxJudgementsPerHour": 80,
   "judgeModel": "sonnet",
   "money": {
     "ebaySellFee": 0.1325,
@@ -158,5 +166,11 @@
         "cardQuery": "rookie"
       }
     ]
+  },
+  "local": {
+    "maxBuyCad": 2000,
+    "minAskResale": 150,
+    "minOfferRatio": 0.65,
+    "minBackedShare": 0.6
   }
 }

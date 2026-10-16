@@ -25,7 +25,7 @@ export function inActiveHours(cfg, d = new Date()) {
 
 const searchUrl = (cfg, q) =>
   `https://www.facebook.com/marketplace/${cfg.facebook.city}/search?` +
-  new URLSearchParams({ query: q, daysSinceListed: '1', maxPrice: String(cfg.maxBuyCad), exact: 'false' });
+  new URLSearchParams({ query: q, daysSinceListed: '1', maxPrice: String(cfg.local?.maxBuyCad ?? cfg.maxBuyCad), exact: 'false' });
 
 function parsePrice(s) {
   if (!s) return null;

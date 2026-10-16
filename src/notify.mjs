@@ -61,7 +61,7 @@ export function toDeal(l, r) {
       .map(x => `${x.label.replace(/^\d+×\s*/, '')}${/japan|japon|\bjp\b|jpn/i.test(l.title) ? ' japanese' : ''}`),
     action: r.action || 'buy',
     grade: r.ident.grade || null,
-    draft: l.source === 'ebay' ? '' : draftMessage(l, r),
+    draft: l.source === 'ebay' ? '' : r.draft || draftMessage(l, r),
     bids: l.bids ?? null,
     endsAt: l.endsAt ?? null,
     seller: l.seller || '',

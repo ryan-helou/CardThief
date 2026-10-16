@@ -107,7 +107,7 @@ function trimQueue(cfg) {
   const local = queue.filter(x => x.source !== 'ebay');
   const newest = xs => xs.sort((a, b) => new Date(b.postedAt) - new Date(a.postedAt));
   // Raw singles (shadow test) are kept last: they must never push a slab out of the queue.
-  const keep = [...local, ...newest(queue.filter(x => x.source === 'ebay' && !x.raw)), ...newest(queue.filter(x => x.raw)).slice(0, cfg.raw?.maxQueue ?? 150)].slice(0, max);
+  const keep = [...local, ...newest(queue.filter(x => x.lot)), ...newest(queue.filter(x => x.source === 'ebay' && !x.raw && !x.lot)), ...newest(queue.filter(x => x.raw)).slice(0, cfg.raw?.maxQueue ?? 150)].slice(0, max);
   log(`queue trimmed: ${queue.length} → ${keep.length} (kept the newest)`);
   queue.splice(0, queue.length, ...keep);
 }
@@ -153,8 +153,10 @@ async function worker(cfg, until, lead, rawFirst = false) {
     while (sonnetAt.length && sonnetAt[0] < hourAgo) sonnetAt.shift();
     if (judgedAt.length >= (cfg.maxTriagePerHour || cfg.maxJudgementsPerHour)) { if (lead) log(`judge budget hit, ${queue.length} waiting`); return; }
     queue.sort((a, b) => rank(a) - rank(b));
-    // One worker looks at raw singles first; the rest keep slabs first (raw never slows the slab hunt).
-    queue.sort((a, b) => (rawFirst ? (b.raw ? 1 : 0) - (a.raw ? 1 : 0) : (a.raw ? 1 : 0) - (b.raw ? 1 : 0)));
+    // Priority: local listings, then eBay lots (the core business), then slabs, then the raw-singles test.
+    // One worker takes raw singles first so the shadow test still gets a share.
+    const group = x => (x.source !== 'ebay' ? 0 : x.lot ? 1 : x.raw ? (rawFirst ? -1 : 3) : 2);
+    queue.sort((a, b) => group(a) - group(b));
     // When the hourly full-check cap is used up, local listings (which always need one) wait; eBay keeps going.
     const sonnetFull = sonnetAt.length >= cfg.maxJudgementsPerHour;
     // Over the sold-price budget pace: eBay slabs wait (newest first when it frees up) rather than be judged blind.
@@ -176,6 +178,8 @@ async function worker(cfg, until, lead, rawFirst = false) {
       if (l.source === 'ebay' && cfg.mode !== 'slabs') l = await ebayDetail(cfg, l, await getFx());
       const r = l.raw
         ? await judgeRaw(cfg, l)
+        : l.lot
+        ? await judge(cfg, l, { allowStage3: sonnetAt.length < cfg.maxJudgementsPerHour, detail: async x => ebayDetail(cfg, x, await getFx()) })
         : cfg.mode === 'slabs' && l.source === 'ebay'
         ? await judgeSlab(cfg, l)
         : await judge(cfg, l, { allowStage3: sonnetAt.length < cfg.maxJudgementsPerHour, detail: fb ? x => facebookDetail(cfg, x) : null });

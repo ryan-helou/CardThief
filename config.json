@@ -16,6 +16,22 @@
     "marketplace": "EBAY_CA",
     "queries": [
       {
+        "label": "Pokémon card lots (Buy It Now / Best Offer)",
+        "q": "pokemon",
+        "categoryIds": "183455",
+        "filter": "deliveryCountry:CA,buyingOptions:{FIXED_PRICE|BEST_OFFER},price:[20..2000],priceCurrency:CAD",
+        "lot": true
+      },
+      {
+        "label": "Pokémon card lot auctions ending within the hour",
+        "q": "pokemon",
+        "categoryIds": "183455",
+        "filter": "deliveryCountry:CA,buyingOptions:{AUCTION}",
+        "sort": "endingSoonest",
+        "endWithinMin": 60,
+        "lot": true
+      },
+      {
         "label": "Canadian slabs",
         "q": "pokemon",
         "categoryIds": "183454",
@@ -110,7 +126,7 @@
   "minPriceCad": 0,
   "triageModel": "haiku",
   "pptReserveCredits": 200,
-  "maxTriagePerHour": 150,
+  "maxTriagePerHour": 250,
   "mode": "slabs",
   "slabs": {
     "graders": [
@@ -172,5 +188,9 @@
     "minAskResale": 150,
     "minOfferRatio": 0.65,
     "minBackedShare": 0.6
+  },
+  "lots": {
+    "maxBuyCad": 2000,
+    "maxBids": 3
   }
 }

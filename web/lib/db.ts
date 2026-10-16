@@ -27,7 +27,9 @@ function db(): Pool {
          ALTER TABLE deals ADD COLUMN IF NOT EXISTS message jsonb;
          CREATE TABLE IF NOT EXISTS heartbeat (id int PRIMARY KEY, data jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
          CREATE TABLE IF NOT EXISTS push_subs (endpoint text PRIMARY KEY, keys jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
-         CREATE TABLE IF NOT EXISTS quotes (id serial PRIMARY KEY, note text, asking numeric, photos jsonb, status text NOT NULL DEFAULT 'pending', result jsonb, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());`,
+         CREATE TABLE IF NOT EXISTS quotes (id serial PRIMARY KEY, note text, asking numeric, photos jsonb, status text NOT NULL DEFAULT 'pending', result jsonb, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+         ALTER TABLE quotes ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'ryan';
+         ALTER TABLE quotes ADD COLUMN IF NOT EXISTS contact jsonb;`,
       )
       .then(() => undefined);
   }
@@ -132,25 +134,29 @@ export async function setMessageResult(id: string, state: "sent" | "failed", err
 }
 
 // ---------- Quotes: Ryan photographs a binder/collection, the Mac values it ----------
-export type Quote = { id: number; note: string | null; asking: number | null; status: "pending" | "working" | "done" | "failed"; result: QuoteResult | null; createdAt: string; photoCount: number };
+export type SellerContact = { name: string; contact: string; city: string; lang: "fr" | "en" };
+export type Quote = { id: number; note: string | null; asking: number | null; status: "pending" | "working" | "done" | "failed"; result: QuoteResult | null; createdAt: string; photoCount: number; source: "ryan" | "seller"; contact: SellerContact | null };
 export type QuoteResult = {
   summary: string; totalCards: number | null; photosRead?: number; resale: number; marketTotal: number; offerSteal: number; offerGood: number;
   profitAtAsking: number | null; lines: { label: string; marketCad: number; netCad: number; basis: string }[]; askSeller: string; fakeRisk: string; error?: string;
 };
 
-export async function createQuote(note: string | null, asking: number | null, photos: string[]): Promise<number> {
-  const rows = await q<{ id: number }>(`INSERT INTO quotes (note, asking, photos) VALUES ($1, $2, $3) RETURNING id`, [note, asking, JSON.stringify(photos)]);
+export async function createQuote(note: string | null, asking: number | null, photos: string[], source: "ryan" | "seller" = "ryan", contact: SellerContact | null = null): Promise<number> {
+  const rows = await q<{ id: number }>(`INSERT INTO quotes (note, asking, photos, source, contact) VALUES ($1, $2, $3, $4, $5) RETURNING id`, [note, asking, JSON.stringify(photos), source, contact ? JSON.stringify(contact) : null]);
   return rows[0].id;
 }
-export async function quotesToday(): Promise<number> {
-  const rows = await q<{ n: string }>(`SELECT count(*) AS n FROM quotes WHERE created_at > now() - interval '24 hours'`);
+export async function quotesToday(source: "ryan" | "seller" = "ryan"): Promise<number> {
+  const rows = await q<{ n: string }>(`SELECT count(*) AS n FROM quotes WHERE source = $1 AND created_at > now() - interval '24 hours'`, [source]);
   return Number(rows[0]?.n ?? 0);
 }
-export async function listQuotes(): Promise<Quote[]> {
-  const rows = await q<{ id: number; note: string | null; asking: string | null; status: Quote["status"]; result: QuoteResult | null; created_at: Date; n: number }>(
-    `SELECT id, note, asking, status, result, created_at, COALESCE(jsonb_array_length(photos), (result->>'photoCount')::int, 0) AS n FROM quotes ORDER BY id DESC LIMIT 15`,
+// Sellers' contact details only go to Ryan's own device (owner cookie); the app itself is open.
+export async function listQuotes(owner: boolean): Promise<Quote[]> {
+  const rows = await q<{ id: number; note: string | null; asking: string | null; status: Quote["status"]; result: QuoteResult | null; created_at: Date; n: number; source: Quote["source"]; contact: SellerContact | null }>(
+    `SELECT id, note, asking, status, result, created_at, source, contact, COALESCE(jsonb_array_length(photos), (result->>'photoCount')::int, 0) AS n FROM quotes ORDER BY id DESC LIMIT 25`,
   );
-  return rows.map((r) => ({ id: r.id, note: r.note, asking: r.asking == null ? null : Number(r.asking), status: r.status, result: r.result, createdAt: r.created_at.toISOString(), photoCount: r.n }));
+  return rows
+    .filter((r) => owner || r.source === "ryan")
+    .map((r) => ({ id: r.id, note: r.note, asking: r.asking == null ? null : Number(r.asking), status: r.status, result: r.result, createdAt: r.created_at.toISOString(), photoCount: r.n, source: r.source, contact: owner ? r.contact : null }));
 }
 // The Mac claims pending quotes one at a time.
 export async function claimQuote(): Promise<{ id: number; note: string | null; asking: number | null; photos: string[] } | null> {
@@ -163,8 +169,13 @@ export async function claimQuote(): Promise<{ id: number; note: string | null; a
   return r ? { id: r.id, note: r.note, asking: r.asking == null ? null : Number(r.asking), photos: r.photos || [] } : null;
 }
 // Photos are dropped once valued: they were only needed for the one read.
-export async function finishQuote(id: number, result: QuoteResult, failed: boolean) {
-  await q(`UPDATE quotes SET status = $2, result = $3, photos = NULL, updated_at = now() WHERE id = $1`, [id, failed ? "failed" : "done", JSON.stringify(result)]);
+export async function finishQuote(id: number, result: QuoteResult, failed: boolean): Promise<{ source: string; contact: SellerContact | null; asking: number | null } | null> {
+  const rows = await q<{ source: string; contact: SellerContact | null; asking: string | null }>(
+    `UPDATE quotes SET status = $2, result = $3, photos = NULL, updated_at = now() WHERE id = $1 RETURNING source, contact, asking`,
+    [id, failed ? "failed" : "done", JSON.stringify(result)],
+  );
+  const r = rows[0];
+  return r ? { source: r.source, contact: r.contact, asking: r.asking == null ? null : Number(r.asking) } : null;
 }
 export async function deleteQuote(id: number) {
   await q(`DELETE FROM quotes WHERE id = $1`, [id]);

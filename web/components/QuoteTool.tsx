@@ -1,0 +1,155 @@
+"use client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { Quote } from "@/lib/db";
+
+const money = (n: number | null | undefined) => (n == null ? "–" : `C$${Math.round(n).toLocaleString("en-CA")}`);
+const ago = (iso: string) => {
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+};
+
+// Phone photos are 3–12 MB; the card names stay readable at 1600px, so shrink before upload.
+async function shrink(file: File): Promise<string> {
+  const img = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.width * scale);
+  c.height = Math.round(img.height * scale);
+  c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.82);
+}
+
+// Snap a binder, a lot or a seller's photos; the Mac reads every card and prices the whole thing.
+export function QuoteTool() {
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [note, setNote] = useState("");
+  const [asking, setAsking] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [quotes, setQuotes] = useState<Quote[]>([]);
+  const input = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    const r = await fetch("/api/quotes", { cache: "no-store" }).then((x) => x.json()).catch(() => null);
+    if (r?.quotes) setQuotes(r.quotes);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  // While a quote is being valued, check back every 8 seconds.
+  const waiting = quotes.some((q) => q.status === "pending" || q.status === "working");
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(load, 8000);
+    return () => clearInterval(t);
+  }, [waiting, load]);
+
+  async function addFiles(files: FileList | null) {
+    if (!files) return;
+    setError("");
+    const room = 10 - photos.length;
+    const next = await Promise.all([...files].slice(0, room).map(shrink));
+    setPhotos((p) => [...p, ...next]);
+    if (files.length > room) setError("Up to 10 photos per quote.");
+  }
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await fetch("/api/quotes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ note, asking: asking || null, photos }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "Couldn't send the quote.");
+      setPhotos([]);
+      setNote("");
+      setAsking("");
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <section className="space-y-3 rounded-2xl border border-[var(--rule)] bg-[var(--surface)] p-3">
+        <div>
+          <h2 className="font-semibold">Quote a collection</h2>
+          <p className="text-sm text-[var(--ink-3)]">Photograph the binder pages or the seller&apos;s photos. Mint reads every card and tells you what the lot is worth and what to offer.</p>
+        </div>
+        <input ref={input} type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+        <div className="flex flex-wrap gap-2">
+          {photos.map((p, i) => (
+            <button key={i} type="button" onClick={() => setPhotos((x) => x.filter((_, j) => j !== i))} className="relative" aria-label="Remove photo">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={p} alt="" className="size-16 rounded-lg object-cover" />
+              <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-[var(--ink)] text-[11px] text-[var(--surface)]">×</span>
+            </button>
+          ))}
+          {photos.length < 10 && (
+            <button type="button" onClick={() => input.current?.click()} className="grid size-16 place-items-center rounded-lg border border-dashed border-[var(--rule)] text-2xl text-[var(--ink-3)]" aria-label="Add photos">+</button>
+          )}
+        </div>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Anything the photos don't show (optional): e.g. 300 cards, mostly 2000s, binder + loose" className="w-full rounded-lg border border-[var(--rule)] bg-transparent p-2 text-sm" />
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-[var(--ink-2)]">Asking price</span>
+          <input value={asking} onChange={(e) => setAsking(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="optional" className="w-28 rounded-lg border border-[var(--rule)] bg-transparent px-2 py-1 num" />
+          <span className="text-[var(--ink-3)]">C$</span>
+        </label>
+        {error && <p className="text-sm text-[var(--steal)]">{error}</p>}
+        <button type="button" disabled={!photos.length || busy} onClick={submit} className="w-full rounded-lg bg-[var(--accent)] py-2.5 text-sm font-semibold text-white disabled:opacity-40">
+          {busy ? "Sending…" : `Get a quote${photos.length ? ` (${photos.length} photo${photos.length > 1 ? "s" : ""})` : ""}`}
+        </button>
+      </section>
+
+      {quotes.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">Recent quotes</h2>
+          {quotes.map((q) => <QuoteCard key={q.id} q={q} />)}
+        </section>
+      )}
+    </div>
+  );
+}
+
+function QuoteCard({ q }: { q: Quote }) {
+  const r = q.result;
+  return (
+    <article className="rounded-xl border border-[var(--rule)] bg-[var(--surface)] p-3">
+      <p className="flex items-baseline justify-between gap-2 text-xs text-[var(--ink-3)]">
+        <span>{q.photoCount} photo{q.photoCount === 1 ? "" : "s"}{q.asking != null ? ` · asking ${money(q.asking)}` : ""}</span>
+        <span>{ago(q.createdAt)}</span>
+      </p>
+      {q.note && <p className="mt-0.5 line-clamp-2 text-sm text-[var(--ink-2)]">{q.note}</p>}
+      {(q.status === "pending" || q.status === "working") && <p className="mt-2 text-sm text-[var(--accent)]">{q.status === "pending" ? "Waiting for the Mac…" : "Reading every card…"}</p>}
+      {q.status === "failed" && <p className="mt-2 text-sm text-[var(--steal)]">Couldn&apos;t value this one{r?.error ? `: ${r.error}` : ""}.</p>}
+      {q.status === "done" && r && (
+        <>
+          <div className="mt-2 grid grid-cols-3 gap-2 text-center num">
+            <div><p className="font-semibold">{money(r.resale)}</p><p className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">Resells for (net)</p></div>
+            <div><p className="font-semibold text-[var(--good)]">{money(r.offerGood)}</p><p className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">Max to pay</p></div>
+            <div><p className="font-semibold text-[var(--steal)]">{money(r.offerSteal)}</p><p className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">Steal price</p></div>
+          </div>
+          {r.profitAtAsking != null && (
+            <p className={`mt-2 text-sm num ${r.profitAtAsking >= 0 ? "text-[var(--good)]" : "text-[var(--steal)]"}`}>
+              At the asking price: {r.profitAtAsking >= 0 ? `+${money(r.profitAtAsking)} profit` : `${money(r.profitAtAsking)} (overpriced)`}
+            </p>
+          )}
+          <p className="mt-2 text-sm text-[var(--ink-2)]">{r.summary}</p>
+          {r.fakeRisk !== "low" && <p className="mt-1 text-xs text-[var(--warn)]">⚠ Fake risk {r.fakeRisk}</p>}
+          <details className="mt-2 text-sm">
+            <summary className="cursor-pointer text-[var(--ink-3)]">{r.lines.length} cards priced{r.totalCards ? ` of ~${r.totalCards}` : ""}</summary>
+            <ul className="mt-2 space-y-0.5">
+              {r.lines.map((x, i) => (
+                <li key={i} className="flex justify-between gap-3 text-[var(--ink-2)]">
+                  <span className="min-w-0 truncate" title={x.basis}>{x.label}</span>
+                  <span className="shrink-0 num">{money(x.marketCad)}</span>
+                </li>
+              ))}
+            </ul>
+            {r.askSeller && <p className="mt-2 text-[var(--ink-2)]">❓ {r.askSeller}</p>}
+          </details>
+        </>
+      )}
+    </article>
+  );
+}

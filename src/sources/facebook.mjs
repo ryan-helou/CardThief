@@ -128,7 +128,8 @@ export async function facebookDetail(cfg, listing) {
     });
     // Thumbnail strip: click through so the larger photos load.
     const thumbs = page.locator('[role="main"] [aria-label*="Thumbnail"], [role="main"] div[role="button"] img');
-    const n = Math.min(await thumbs.count().catch(() => 0), 4);
+    // Binder and collection posts hide the valuable pages deep in the photo strip: open up to 12.
+    const n = Math.min(await thumbs.count().catch(() => 0), 12);
     const more = [];
     for (let i = 0; i < n; i++) {
       await thumbs.nth(i).click({ timeout: 2000 }).catch(() => {});
@@ -139,7 +140,7 @@ export async function facebookDetail(cfg, listing) {
       });
       if (src) more.push(src);
     }
-    const images = [...new Set([...more, ...info.imgs, ...listing.images])].slice(0, 8);
+    const images = [...new Set([...more, ...info.imgs, ...listing.images])].slice(0, 12);
     return { ...listing, title: info.title || listing.title, description: info.text, images };
   } finally {
     await ctx.close();

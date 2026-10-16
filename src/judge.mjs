@@ -215,6 +215,7 @@ export async function value(cfg, l, ident, { pptOk = true, strict = false } = {}
   const lines = [];
   let counted = 0;
   let resale = 0;
+  let backed = 0; // resale value priced from real data (catalog/sold prices), not Claude's own estimate
   for (const c of ident.cards) {
     const qty = Math.max(1, c.quantity || 1);
     counted += qty;
@@ -236,6 +237,7 @@ export async function value(cfg, l, ident, { pptOk = true, strict = false } = {}
     const adj = market * condFactor * (c.grade ? 1 : langFactor);
     const net = netSingle(adj) * qty;
     resale += Math.max(0, net);
+    if (!/Claude estimate/.test(basis)) backed += Math.max(0, net);
     lines.push({ label: `${qty > 1 ? qty + '× ' : ''}${c.name}${c.number ? ' ' + c.number : ''}${c.grade ? ' ' + c.grade : ''}`, marketCad: +(market * qty).toFixed(2), netCad: +net.toFixed(2), basis });
   }
   for (const s of ident.sealed || []) {
@@ -273,7 +275,7 @@ export async function value(cfg, l, ident, { pptOk = true, strict = false } = {}
   // Offer: the price at which this would be a steal, rounded down to $5, never above asking.
   const stealPrice = (resale - (l.shippingCad || 0)) / (1 + steal.minRoi);
   const offer = Math.max(5, Math.min(price, Math.floor(stealPrice / 5) * 5));
-  return { tier, price, cost, resale, profit, roi, marketTotal, bulk, lines, offer };
+  return { tier, price, cost, resale, profit, roi, marketTotal, bulk, lines, offer, placeholder, backedShare: resale > 0 ? backed / resale : 0 };
 }
 
 // Slab alerts only: one look at the photos to confirm the label matches and the slab looks genuine.
@@ -359,14 +361,60 @@ export async function judge(cfg, l, { allowStage3 = true, detail = null } = {}) 
   if (!allowStage3) throw new Error('rate limit: Sonnet hourly cap reached, retrying later');
   // Full listing page (description + every photo) only now, for the few that reach Stage 3.
   if (detail) l = { ...(await detail(l)), hint: l.hint };
-  const { dir, n } = await downloadImages(l, 4);
+  const { dir, n } = await downloadImages(l, deep ? 12 : 4);
   try {
     const ident = await runClaude(cfg, PROMPT({ ...l, hint }), n ? dir : null, {
-      model: cfg.judgeModel, schema: SCHEMA, system: fs.readFileSync(SKILL, 'utf8'), maxPx: 1024,
+      model: cfg.judgeModel, schema: SCHEMA, system: fs.readFileSync(SKILL, 'utf8'), maxPx: n > 6 ? 900 : 1024,
     });
-    const v = await value(cfg, l, ident);
-    return { stage: 3, ident, ...v, photos: n };
+    let v = await value(cfg, l, ident);
+    if (deep) v = await localDecision(cfg, l, ident, v);
+    const shown = v.rejected ? { ...ident, summary: `${ident.summary} Not alerted: ${v.rejected}.` } : v.secondCheck ? { ...ident, summary: `${ident.summary} Second check: ${v.secondCheck}` } : ident;
+    return { stage: 3, ...v, ident: shown, photos: n };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+}
+
+// ---------- Local (Marketplace/Kijiji) alerts: offers, evidence, and a skeptical second check ----------
+// Collections are negotiated: "worth C$500, asking C$250, offer C$180" is a deal even though the asking price
+// isn't. But every local alert must rest mostly on real price data (not Claude's own guesses) and survive a
+// second reviewer, the same bar as eBay slabs.
+const LOCAL_SECOND = {
+  type: 'object',
+  properties: { confirm: { type: 'boolean' }, fairResaleCad: { type: 'number' }, reason: { type: 'string' } },
+  required: ['confirm', 'fairResaleCad', 'reason'],
+};
+async function localDecision(cfg, l, ident, v) {
+  const { steal, good } = cfg.deal;
+  const lc = cfg.local || {};
+  const usable = ident.isPokemonCards && ident.fakeRisk !== 'high' && !v.placeholder && ident.priceScope !== 'catalog';
+  let out = { ...v, action: 'buy' };
+  // Not a deal at the asking price, but a realistic offer makes it one.
+  const offerProfit = v.resale - v.offer;
+  if (usable && v.tier === 'pass' && ['underpriced', 'fair'].includes(ident.verdict) && ident.priceScope === 'whole_listing'
+    && v.offer < v.price && v.offer >= v.price * (lc.minOfferRatio ?? 0.65)
+    && offerProfit >= good.minProfitCad && offerProfit / v.offer >= good.minRoi) {
+    out = { ...out, tier: offerProfit >= steal.minProfitCad && offerProfit / v.offer >= steal.minRoi ? 'steal' : 'good', action: 'offer' };
+  }
+  if (out.tier === 'pass') return out;
+  const reject = why => ({ ...out, tier: 'pass', rejected: why });
+  if (v.backedShare < (lc.minBackedShare ?? 0.6)) return reject(`value rests mostly on AI estimates (${Math.round(v.backedShare * 100)}% from real price data)`);
+  const pay = out.action === 'offer' ? v.offer : v.cost;
+  const prompt = [
+    `Local ${l.source} listing near Montréal: "${l.title}"`,
+    `Asking: C$${v.price}. ${out.action === 'offer' ? `Plan: offer C$${v.offer} cash.` : 'Plan: buy at asking.'}`,
+    `Description: ${(l.description || '').slice(0, 1200)}`,
+    `What the photo reader found (${ident.totalCardCount ?? '?'} cards total, language ${ident.language}, fake risk ${ident.fakeRisk}): ${ident.summary}`,
+    `Priced lines (market C$ → net after eBay fees and shipping):\n${v.lines.map(x => `- ${x.label}: C$${x.marketCad} → C$${x.netCad} (${x.basis})`).join('\n')}`,
+    `Bulk allowance C$${v.bulk.toFixed(0)}. Total resale C$${v.resale.toFixed(0)}, profit C$${(v.resale - pay).toFixed(0)} at C$${pay}.`,
+    '',
+    'Find any reason this is NOT a real flip: cards misidentified (wrong set/printing, reprints like Evolutions/Celebrations/30th, Japanese or French valued as English), condition likely worse, values from the wrong card, duplicates double-counted, a per-card or "market value" price mistaken for a lot price, fakes, or a seller who clearly knows the value.',
+    'fairResaleCad: what you are confident the whole lot nets after eBay fees within ~1 month, low end of the evidence.',
+    `confirm=true only if, paying C$${pay}, profit is at least C$${good.minProfitCad} and ${Math.round(good.minRoi * 100)}% of cost. reason: one short sentence.`,
+  ].join('\n');
+  const r = await runClaude(cfg, prompt, null, { model: cfg.judgeModel, schema: LOCAL_SECOND, system: 'You are a skeptical reviewer for a Pokémon card flipper buying local collections. False alarms waste his time; when in doubt, reject.' })
+    .catch(e => ({ confirm: false, reason: `second check unavailable (${e.message})`, fairResaleCad: 0 }));
+  const p2 = r.fairResaleCad - pay;
+  if (!r.confirm || p2 < good.minProfitCad || p2 / pay < good.minRoi) return reject(`second check rejected: ${r.reason}`);
+  return { ...out, resale: Math.min(v.resale, r.fairResaleCad), profit: Math.min(v.resale, r.fairResaleCad) - pay, roi: (Math.min(v.resale, r.fairResaleCad) - pay) / pay, secondCheck: r.reason };
 }

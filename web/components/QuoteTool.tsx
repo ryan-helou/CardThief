@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Quote } from "@/lib/db";
 
-const money = (n: number | null | undefined) => (n == null ? "–" : `C$${Math.round(n).toLocaleString("en-CA")}`);
+const money = (n: number | null | undefined) => (n == null ? "–" : `${n < 0 ? "−" : ""}C$${Math.abs(Math.round(n)).toLocaleString("en-CA")}`);
 const ago = (iso: string) => {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
@@ -158,7 +158,11 @@ function QuoteCard({ q, onDelete }: { q: Quote; onDelete: () => void }) {
             </ul>
             {r.askSeller && <p className="mt-2 text-[var(--ink-2)]">❓ {r.askSeller}</p>}
           </details>
-          {r.offerSteal > 0 && (
+          {/* An offer far below asking just insults the seller: say so instead. */}
+          {r.offerSteal > 0 && q.asking != null && r.offerSteal < q.asking * 0.4 && (
+            <p className="mt-2 text-sm text-[var(--ink-3)]">Not worth an offer: a fair-to-you price is under 40% of what they ask.</p>
+          )}
+          {r.offerSteal > 0 && (q.asking == null || r.offerSteal >= q.asking * 0.4) && (
             <div className="mt-2 flex gap-2">
               <button type="button" onClick={() => copy(true)} className="flex-1 rounded-lg border border-[var(--rule)] py-1.5 text-sm">{copied === "fr" ? "Copié ✓" : `Copy offer ${money(r.offerSteal)} (FR)`}</button>
               <button type="button" onClick={() => copy(false)} className="flex-1 rounded-lg border border-[var(--rule)] py-1.5 text-sm">{copied === "en" ? "Copied ✓" : "Copy (EN)"}</button>

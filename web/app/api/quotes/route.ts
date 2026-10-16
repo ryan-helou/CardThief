@@ -1,3 +1,4 @@
+import { isOwner } from "@/lib/auth";
 import { createQuote, deleteQuote, listQuotes, quotesToday } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
@@ -7,8 +8,8 @@ const MAX_PER_DAY = 20;
 const MAX_PHOTOS = 10;
 const MAX_PHOTO_CHARS = 2_000_000; // ~1.5 MB per photo as base64; the app shrinks them before upload
 
-export async function GET() {
-  return Response.json({ quotes: await listQuotes() });
+export async function GET(req: Request) {
+  return Response.json({ quotes: await listQuotes(isOwner(req.headers.get("cookie"))) });
 }
 
 export async function POST(req: Request) {

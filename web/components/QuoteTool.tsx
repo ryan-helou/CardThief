@@ -129,6 +129,12 @@ function QuoteCard({ q, onDelete }: { q: Quote; onDelete: () => void }) {
         <span>{q.photoCount} photo{q.photoCount === 1 ? "" : "s"}{q.asking != null ? ` · asking ${money(q.asking)}` : ""}</span>
         <span className="flex items-center gap-2">{ago(q.createdAt)}<button type="button" onClick={onDelete} className="text-[var(--ink-3)]" aria-label="Delete quote">✕</button></span>
       </p>
+      {q.source === "seller" && (
+        <p className="mt-1 text-sm">
+          <span className="rounded bg-[var(--accent)]/15 px-1.5 py-0.5 text-xs font-semibold text-[var(--accent)]">Seller</span>{" "}
+          {q.contact ? <>{q.contact.name}{q.contact.city ? ` · ${q.contact.city}` : ""} · <a className="text-[var(--accent)]" href={/@/.test(q.contact.contact) ? `mailto:${q.contact.contact}` : `tel:${q.contact.contact.replace(/[^\d+]/g, "")}`}>{q.contact.contact}</a></> : null}
+        </p>
+      )}
       {q.note && <p className="mt-0.5 line-clamp-2 text-sm text-[var(--ink-2)]">{q.note}</p>}
       {(q.status === "pending" || q.status === "working") && <p className="mt-2 text-sm text-[var(--accent)]">{q.status === "pending" ? "Waiting for the Mac…" : "Reading every card…"}</p>}
       {q.status === "failed" && <p className="mt-2 text-sm text-[var(--steal)]">Couldn&apos;t value this one{r?.error ? `: ${r.error}` : ""}.</p>}
@@ -164,7 +170,7 @@ function QuoteCard({ q, onDelete }: { q: Quote; onDelete: () => void }) {
           )}
           {r.offerSteal > 0 && (q.asking == null || r.offerSteal >= q.asking * 0.4) && (
             <div className="mt-2 flex gap-2">
-              <button type="button" onClick={() => copy(true)} className="flex-1 rounded-lg border border-[var(--rule)] py-1.5 text-sm">{copied === "fr" ? "Copié ✓" : `Copy offer ${money(r.offerSteal)} (FR)`}</button>
+              <button type="button" onClick={() => copy(q.contact?.lang !== "en")} className="flex-1 rounded-lg border border-[var(--rule)] py-1.5 text-sm">{copied === "fr" ? "Copié ✓" : `Copy offer ${money(r.offerSteal)} (FR)`}</button>
               <button type="button" onClick={() => copy(false)} className="flex-1 rounded-lg border border-[var(--rule)] py-1.5 text-sm">{copied === "en" ? "Copied ✓" : "Copy (EN)"}</button>
             </div>
           )}

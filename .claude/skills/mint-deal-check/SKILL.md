@@ -95,3 +95,5 @@ Weekly sales of that card+grade (PPT 7-day volume) set the margin: under ~1 sale
 ## Local lots and collections (since 2026-10-15)
 
 Marketplace/Kijiji listings get up to 12 photos read. A local alert needs at least 60% of its resale value priced from real data (catalog or sold prices, not Claude's estimate) and must pass a skeptical second check. Collections priced too high but worth it at a realistic offer (offer ≥ 65% of asking, `local.minOfferRatio`) alert as "offer" with the offer in the drafted message. The app's Quote tab values collections Ryan photographs in person (resale, max to pay at the good bar, steal price), capped at 20 quotes/day.
+
+Screenshots of collection-tracker apps (Collectr, TCGplayer), price lists and stock art are not the lot: cards seen only there are never counted (the photo-by-photo read classifies each photo and skips non-physical ones).

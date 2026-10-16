@@ -133,7 +133,7 @@ ${(l.description || '').slice(0, 2500)}
 PHOTOS: attached below; study every one before answering.${l.hint ? `\nTitle-based estimate to verify: ${l.hint}` : ''}\nFollow your checklist (Stage 3) and return the fields below. All money is CAD except per-card estUsd.
 
 Return:
-- cards: every card worth roughly US$2+ that you can actually see or that the text names specifically. Use the ENGLISH card name (translate French names, e.g. "Dracaufeu" → "Charizard"), the collector number and set total if readable, set name if known. estUsd = your best estimate of its current raw near-mint TCGplayer market price in USD (or the graded price if slabbed, with grade like "PSA 10"). quantity for duplicates. Don't list commons/uncommons individually.
+- cards: every card worth roughly US$2+ that you can actually see or that the text names specifically. Use the ENGLISH card name (translate French names, e.g. "Dracaufeu" → "Charizard"), the collector number and set total if readable, set name if known. estUsd = your best estimate of its current raw near-mint TCGplayer market price in USD (or the graded price if slabbed, with grade like "PSA 10"). quantity for duplicates. Don't list commons/uncommons individually. Never list cards that only appear in a screenshot, a collection-tracker app (Collectr, TCGplayer), a price list or stock art: those aren't proof the seller has them.
 - totalCardCount: total cards in the listing (stated or estimated), null if unknown.
 - sealed: sealed products with estUsd each.
 - fakeRisk: high for proxies/"custom"/"orica"/metal/gold-foil novelty cards, fake-looking fonts/colours, or prices far too good to be true.
@@ -478,14 +478,16 @@ export async function quoteLot(cfg, { id, note, asking }, dir) {
 const PHOTO_CARDS = {
   type: 'object',
   properties: {
+    photoKind: { type: 'string', enum: ['physical_cards', 'screenshot_or_app', 'stock_or_catalog_image', 'other'] },
     cardsVisible: { type: 'integer' },
     cards: SCHEMA.properties.cards,
     sealed: SCHEMA.properties.sealed,
   },
-  required: ['cardsVisible', 'cards', 'sealed'],
+  required: ['photoKind', 'cardsVisible', 'cards', 'sealed'],
 };
 const PHOTO_PROMPT = (l, i, n) => `Photo ${i} of ${n} from a Pokémon card collection being valued for purchase ("${l.title}").
-${l.description ? `Seller's text: ${l.description.slice(0, 800)}\n` : ''}Look at this one photo closely. cardsVisible: how many cards you can see in it (count binder slots and piles).
+${l.description ? `Seller's text: ${l.description.slice(0, 800)}\n` : ''}Look at this one photo closely. photoKind: "physical_cards" only if it is a real photo of actual cards, binders or slabs; "screenshot_or_app" for a phone screenshot, collection-tracker app (Collectr, TCGplayer, eBay), or price list; "stock_or_catalog_image" for official card art or a product image; "other" for anything else. Only physical cards are part of the lot.
+cardsVisible: how many cards you can see in it (count binder slots and piles).
 cards: EVERY card in this photo worth roughly US$2 or more: holos, reverse holos of good cards, ex/EX/GX/V/VMAX/VSTAR, full arts, illustration rares, trainer gallery, vintage WOTC rares, 1st Edition, shadowless, promos, slabs. English name (translate French/Japanese), collector number and set total if readable, set name, variant (1st/holo/reverse/normal), condition you can see (NM/LP/MP/HP/DMG, "unknown" if not visible), estUsd = raw near-mint TCGplayer market USD (or the slab's graded price, with grade). Never guess an expensive card you can't actually read; skip commons, uncommons and energies.
 sealed: any sealed product in this photo.`;
 
@@ -507,13 +509,15 @@ export async function readPhotosDeep(cfg, l, dir) {
   // The same card can appear in two photos (overview + close-up): keep the larger count per card, don't add.
   const key = c => `${String(c.name).toLowerCase().replace(/[^a-z0-9]/g, '')}|${String(c.number || '').split('/')[0].replace(/^0+/, '')}|${c.grade || ''}`;
   const cards = new Map();
-  for (const r of out.filter(Boolean)) {
+  // Screenshots of tracker apps and stock images show cards the seller may not be selling: never count them.
+  const real = out.filter(r => r && r.photoKind === 'physical_cards');
+  for (const r of real) {
     const perPhoto = new Map();
     for (const c of r.cards) perPhoto.set(key(c), { ...c, quantity: (perPhoto.get(key(c))?.quantity || 0) + Math.max(1, c.quantity || 1) });
     for (const [k, c] of perPhoto) if (!cards.has(k) || cards.get(k).quantity < c.quantity) cards.set(k, c);
   }
-  const sealed = out.filter(Boolean).flatMap(r => r.sealed || []);
-  return { cards: [...cards.values()], sealed, cardsVisible: out.filter(Boolean).reduce((a, r) => a + (r.cardsVisible || 0), 0), photosRead: out.filter(Boolean).length };
+  const sealed = real.flatMap(r => r.sealed || []);
+  return { cards: [...cards.values()], sealed, cardsVisible: real.reduce((a, r) => a + (r.cardsVisible || 0), 0), photosRead: out.filter(Boolean).length, skippedPhotos: out.filter(r => r && r.photoKind !== 'physical_cards').length };
 }
 export { PROMPT as PROMPT_FOR_TEST, SCHEMA as SCHEMA_FOR_TEST };
 

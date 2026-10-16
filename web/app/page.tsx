@@ -108,6 +108,7 @@ function DealCard({ r }: { r: DealRow }) {
           {r.status === "bought" && <p className="mt-2 text-sm num">Paid {money(r.boughtFor)}</p>}
         </>
       )}
+      {d.gone && r.status === "passed" && <p className="mt-1 text-xs text-[var(--ink-3)]">Closed automatically: {d.gone}</p>}
       {r.status === "sold" && (
         <p className="mt-1 text-sm num">
           Paid {money(r.boughtFor)}, sold {money(r.soldFor)} →{" "}

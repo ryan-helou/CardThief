@@ -160,8 +160,9 @@ async function worker(cfg, until, lead, rawFirst = false) {
     // When the hourly full-check cap is used up, local listings (which always need one) wait; eBay keeps going.
     const sonnetFull = sonnetAt.length >= cfg.maxJudgementsPerHour;
     // Over the sold-price budget pace: eBay slabs wait (newest first when it frees up) rather than be judged blind.
+    // Lots (priority) and the raw test (gates its own lookups) keep going.
     const ebayOk = cfg.mode !== 'slabs' || pptPaced();
-    const pick = queue.findIndex(x => (x.source === 'ebay' && ebayOk) || (x.source !== 'ebay' && !fbBusy && !(fbSweeping && x.source === 'facebook') && !(sonnetFull && cfg.deepLocal !== false)));
+    const pick = queue.findIndex(x => (x.source === 'ebay' && (ebayOk || x.lot || x.raw)) || (x.source !== 'ebay' && !fbBusy && !(fbSweeping && x.source === 'facebook') && !(sonnetFull && cfg.deepLocal !== false)));
     if (pick < 0) {
       if (!ebayOk) { if (lead) log(`price-lookup budget paced, ${queue.length} waiting`); return; }
       if (sonnetFull && lead) log(`full-check cap reached, ${queue.length} local listings waiting`);

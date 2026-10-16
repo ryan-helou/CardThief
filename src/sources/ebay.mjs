@@ -18,7 +18,7 @@ async function fetchJson(url, opts) {
 let token = null;
 let tokenExpires = 0;
 
-async function getToken(keys) {
+export async function getToken(keys) {
   if (token && Date.now() < tokenExpires - 60_000) return token;
   const basic = Buffer.from(`${keys.clientId}:${keys.clientSecret}`).toString('base64');
   const res = await fetchJson('https://api.ebay.com/identity/v1/oauth2/token', {

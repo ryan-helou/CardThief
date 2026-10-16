@@ -139,5 +139,24 @@
     "minPhotos": 2,
     "resaleShipCad": 6,
     "maxQueue": 150
+  },
+  "odds": {
+    "enabled": true,
+    "everyHours": 6,
+    "cardPlayers": 6,
+    "events": [
+      {
+        "label": "NHL Calder 2026-27",
+        "sport": "hockey",
+        "slug": "nhl-2026-27-calder-trophy-20260625172243021",
+        "cardQuery": "rookie"
+      },
+      {
+        "label": "NBA Rookie of the Year 2026-27",
+        "sport": "basketball",
+        "slug": "nba-2026-27-rookie-of-the-year-20260624161716143",
+        "cardQuery": "rookie"
+      }
+    ]
   }
 }

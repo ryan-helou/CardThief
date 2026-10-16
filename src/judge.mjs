@@ -23,7 +23,7 @@ export function prefilter(cfg, l) {
   const auction = l.buyingOptions?.includes('AUCTION') && !l.buyingOptions?.includes('FIXED_PRICE');
   if (!auction && l.priceCad < (cfg.minPriceCad ?? 20)) return `under C$${cfg.minPriceCad ?? 20} ($${l.priceCad})`;
   // Local collections run bigger than single slabs: they get their own ceiling.
-  const maxBuy = l.source === 'ebay' ? cfg.maxBuyCad : (cfg.local?.maxBuyCad ?? cfg.maxBuyCad);
+  const maxBuy = l.lot ? (cfg.lots?.maxBuyCad ?? cfg.local?.maxBuyCad ?? cfg.maxBuyCad) : l.source === 'ebay' ? cfg.maxBuyCad : (cfg.local?.maxBuyCad ?? cfg.maxBuyCad);
   if (l.priceCad > maxBuy) return `over max buy ($${l.priceCad})`;
   // eBay from outside Canada: only lots survive the 20–35% cross-border costs.
   const slabs = cfg.mode === 'slabs';
@@ -334,7 +334,7 @@ export async function judge(cfg, l, { allowStage3 = true, detail = null } = {}) 
   // Marketplace/Kijiji deals are rare and hide in photos and descriptions, so they skip the
   // title-only shortcuts and always get the full Sonnet read. eBay keeps the cheap stages.
   const deep = l.source !== 'ebay' && cfg.deepLocal !== false;
-  const s1 = deep ? null : await stage1(cfg, l);
+  const s1 = deep || l.lot ? null : await stage1(cfg, l);
   let hint = null;
   if (deep) {
     hint = 'local listing: read the description and every photo carefully; look for valuable cards hidden in lots and binders';
@@ -342,7 +342,8 @@ export async function judge(cfg, l, { allowStage3 = true, detail = null } = {}) 
     if (s1.profit < good.minProfitCad / 2 || s1.roi < good.minRoi / 2) return { ...s1, stage: 1, tier: 'pass' };
     hint = `${s1.lines.map(x => `${x.label} ≈ C$${x.marketCad} (${x.basis})`).join('; ')}; title-based profit C$${s1.profit.toFixed(0)}`;
   } else {
-    // Stage 2: Haiku glances at the title and one photo.
+    // Stage 2: Haiku glances at the title and one photo. Some eBay lots come back from search without one.
+    if (l.lot && !l.images?.length && detail) l = { ...(await detail(l)), hint: l.hint };
     const { dir } = await downloadImages(l, 1);
     const img = fs.readdirSync(dir)[0];
     const tdir = img ? dir : null;
@@ -364,7 +365,7 @@ export async function judge(cfg, l, { allowStage3 = true, detail = null } = {}) 
   if (!allowStage3) throw new Error('rate limit: Sonnet hourly cap reached, retrying later');
   // Full listing page (description + every photo) only now, for the few that reach Stage 3.
   if (detail) l = { ...(await detail(l)), hint: l.hint };
-  const { dir, n } = await downloadImages(l, deep ? 12 : 4);
+  const { dir, n } = await downloadImages(l, deep || l.lot ? 12 : 4);
   try {
     let ident = await runClaude(cfg, PROMPT({ ...l, hint }), n ? dir : null, {
       model: cfg.judgeModel, schema: SCHEMA, system: fs.readFileSync(SKILL, 'utf8'), maxPx: n > 6 ? 900 : 1024,
@@ -373,13 +374,14 @@ export async function judge(cfg, l, { allowStage3 = true, detail = null } = {}) 
     // Promising or vintage collections get the photo-by-photo read before deciding: one call over many
     // reduced photos misses about half the cards.
     // Every local collection gets the photo-by-photo read (lots are the core business); singles don't need it.
-    if (deep && n >= 2 && (['lot', 'mixed'].includes(ident.kind) || (ident.totalCardCount || 0) > 15)) {
+    // eBay lots arrive by the dozen an hour, so only the promising ones (resale at least half the cost) get it there.
+    if (n >= 2 && (deep || (l.lot && v.resale >= 0.5 * v.cost)) && (['lot', 'mixed'].includes(ident.kind) || (ident.totalCardCount || 0) > 15)) {
       const d = await readPhotosDeep(cfg, l, dir);
       ident = withDeep(ident, d);
       v = await value(cfg, l, ident);
       log(`deep read ${l.id}: ${d.photosRead} photos, ${d.cards.length} cards → resale C$${v.resale.toFixed(0)}`);
     }
-    if (deep) v = await localDecision(cfg, l, ident, v);
+    if (deep || l.lot) v = await localDecision(cfg, l, ident, v);
     const shown = v.rejected ? { ...ident, summary: `${ident.summary} Not alerted: ${v.rejected}.` } : v.secondCheck ? { ...ident, summary: `${ident.summary} Second check: ${v.secondCheck}` } : ident;
     return { stage: 3, ...v, ident: shown, photos: n };
   } finally {
@@ -401,15 +403,26 @@ async function localDecision(cfg, l, ident, v) {
   const lc = cfg.local || {};
   const usable = ident.isPokemonCards && ident.fakeRisk !== 'high' && !v.placeholder && ident.priceScope !== 'catalog';
   let out = { ...v, action: 'buy' };
-  // Not a deal at the asking price, but a realistic offer makes it one.
+  // eBay lot auctions (judged in their last hour): the alert is a maximum bid, not a buy.
+  const ebay = l.source === 'ebay';
+  const auction = ebay && l.buyingOptions?.includes('AUCTION') && !l.buyingOptions?.includes('FIXED_PRICE');
+  if (auction) {
+    const tax = 1 + cfg.money.buyerTaxOnline;
+    const maxBid = Math.floor(((v.resale / (1 + good.minRoi)) / tax - (l.shippingCad || 0)) / 5) * 5;
+    if (usable && (l.bids ?? 0) <= (cfg.lots?.maxBids ?? 3) && maxBid >= l.priceCad * 1.2) {
+      const payAll = (maxBid + (l.shippingCad || 0)) * tax;
+      out = { ...out, tier: v.resale - payAll >= steal.minProfitCad && (v.resale - payAll) / payAll >= steal.minRoi ? 'steal' : 'good', action: 'auction', offer: maxBid, cost: payAll, profit: v.resale - payAll, roi: (v.resale - payAll) / payAll };
+    } else return { ...out, tier: 'pass' };
+  }
+  // Not a deal at the asking price, but a realistic offer makes it one (on eBay only when the seller takes offers).
   const offerProfit = v.resale - v.offer;
-  if (usable && v.tier === 'pass' && ['underpriced', 'fair'].includes(ident.verdict) && ident.priceScope === 'whole_listing'
+  if (!auction && (!ebay || l.buyingOptions?.includes('BEST_OFFER')) && usable && v.tier === 'pass' && ['underpriced', 'fair'].includes(ident.verdict) && ident.priceScope === 'whole_listing'
     && v.offer < v.price && v.offer >= v.price * (lc.minOfferRatio ?? 0.65)
     && offerProfit >= good.minProfitCad && offerProfit / v.offer >= good.minRoi) {
     out = { ...out, tier: offerProfit >= steal.minProfitCad && offerProfit / v.offer >= steal.minRoi ? 'steal' : 'good', action: 'offer' };
   }
   // "C$1" placeholder on a valuable collection = price on request. Not a buy yet, but a lead worth one message.
-  if (out.tier === 'pass' && v.placeholder && ident.isPokemonCards && ident.fakeRisk === 'low' && ident.priceScope !== 'catalog'
+  if (!ebay && out.tier === 'pass' && v.placeholder && ident.isPokemonCards && ident.fakeRisk === 'low' && ident.priceScope !== 'catalog'
     && ['lot', 'mixed', 'graded'].includes(ident.kind) && v.resale >= (lc.minAskResale ?? 150) && v.backedShare >= (lc.minBackedShare ?? 0.6)) {
     const fr = /\b(cartes?|classeur|collection|vends|à vendre|les|des|et|avec)\b/i.test(`${l.title} ${l.description || ''}`);
     const pay = Math.floor(v.resale / (1 + good.minRoi) / 5) * 5;
@@ -419,7 +432,7 @@ async function localDecision(cfg, l, ident, v) {
   if (out.tier === 'pass') return out;
   const reject = why => ({ ...out, tier: 'pass', rejected: why });
   if (v.backedShare < (lc.minBackedShare ?? 0.6)) return reject(`value rests mostly on AI estimates (${Math.round(v.backedShare * 100)}% from real price data)`);
-  const pay = out.action === 'offer' ? v.offer : v.cost;
+  const pay = out.action === 'offer' ? v.offer : out.action === 'auction' ? out.cost : v.cost;
   const prompt = [
     `Local ${l.source} listing near Montréal: "${l.title}"`,
     `Asking: C$${v.price}. ${out.action === 'offer' ? `Plan: offer C$${v.offer} cash.` : 'Plan: buy at asking.'}`,

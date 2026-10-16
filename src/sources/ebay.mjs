@@ -70,6 +70,7 @@ export async function searchEbay(cfg, query, since, fx) {
     return {
       source: 'ebay',
       raw: Boolean(query.raw), // from a raw-singles search: judged by the raw judge (shadow mode)
+      lot: Boolean(query.lot), // from a mixed-lots search: judged like a local collection
       id: `ebay:${it.legacyItemId || it.itemId}`,
       itemId: it.itemId,
       url: it.itemWebUrl,
@@ -86,7 +87,8 @@ export async function searchEbay(cfg, query, since, fx) {
       country: it.itemLocation?.country || null,
       seller: it.seller ? `${it.seller.username} (${it.seller.feedbackPercentage}% / ${it.seller.feedbackScore})` : '',
       postedAt: it.itemCreationDate,
-      images: [it.image?.imageUrl, ...(it.additionalImages || []).map(i => i.imageUrl)].filter(Boolean),
+      // Search returns 225px thumbnails; 500px is enough for the quick look to read a lot.
+      images: [it.image?.imageUrl, ...(it.additionalImages || []).map(i => i.imageUrl)].filter(Boolean).map(u => u.replace(/s-l\d+\./, 's-l500.')),
       condition: it.condition || '',
     };
   });

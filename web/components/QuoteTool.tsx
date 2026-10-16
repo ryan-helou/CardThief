@@ -104,20 +104,30 @@ export function QuoteTool() {
       {quotes.length > 0 && (
         <section className="space-y-2">
           <h2 className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--ink-3)]">Recent quotes</h2>
-          {quotes.map((q) => <QuoteCard key={q.id} q={q} />)}
+          {quotes.map((q) => <QuoteCard key={q.id} q={q} onDelete={async () => { await fetch(`/api/quotes?id=${q.id}`, { method: "DELETE" }); load(); }} />)}
         </section>
       )}
     </div>
   );
 }
 
-function QuoteCard({ q }: { q: Quote }) {
+// Ready-to-send offer, in the seller's language, at the steal price (room to meet in the middle up to "max to pay").
+function offerText(r: NonNullable<Quote["result"]>, fr: boolean) {
+  const top = [...r.lines].sort((a, b) => b.marketCad - a.marketCad).slice(0, 3).map((x) => x.label.replace(/^\d+× /, "")).join(", ");
+  return fr
+    ? `Bonjour! J'ai regardé la collection${top ? ` (${top}...)` : ""}. Je pourrais vous offrir ${Math.round(r.offerSteal)}$ comptant, et je peux passer la chercher rapidement. Ça vous irait?`
+    : `Hi! I went through the collection${top ? ` (${top}...)` : ""}. I could offer $${Math.round(r.offerSteal)} cash and pick it up quickly. Would that work for you?`;
+}
+
+function QuoteCard({ q, onDelete }: { q: Quote; onDelete: () => void }) {
   const r = q.result;
+  const [copied, setCopied] = useState("");
+  const copy = async (fr: boolean) => { if (!r) return; await navigator.clipboard.writeText(offerText(r, fr)).catch(() => {}); setCopied(fr ? "fr" : "en"); setTimeout(() => setCopied(""), 2000); };
   return (
     <article className="rounded-xl border border-[var(--rule)] bg-[var(--surface)] p-3">
       <p className="flex items-baseline justify-between gap-2 text-xs text-[var(--ink-3)]">
         <span>{q.photoCount} photo{q.photoCount === 1 ? "" : "s"}{q.asking != null ? ` · asking ${money(q.asking)}` : ""}</span>
-        <span>{ago(q.createdAt)}</span>
+        <span className="flex items-center gap-2">{ago(q.createdAt)}<button type="button" onClick={onDelete} className="text-[var(--ink-3)]" aria-label="Delete quote">✕</button></span>
       </p>
       {q.note && <p className="mt-0.5 line-clamp-2 text-sm text-[var(--ink-2)]">{q.note}</p>}
       {(q.status === "pending" || q.status === "working") && <p className="mt-2 text-sm text-[var(--accent)]">{q.status === "pending" ? "Waiting for the Mac…" : "Reading every card…"}</p>}
@@ -137,9 +147,9 @@ function QuoteCard({ q }: { q: Quote }) {
           <p className="mt-2 text-sm text-[var(--ink-2)]">{r.summary}</p>
           {r.fakeRisk !== "low" && <p className="mt-1 text-xs text-[var(--warn)]">⚠ Fake risk {r.fakeRisk}</p>}
           <details className="mt-2 text-sm">
-            <summary className="cursor-pointer text-[var(--ink-3)]">{r.lines.length} cards priced{r.totalCards ? ` of ~${r.totalCards}` : ""}</summary>
+            <summary className="cursor-pointer text-[var(--ink-3)]">{r.lines.length} cards priced{r.totalCards ? ` of ~${r.totalCards}` : ""}{r.photosRead ? ` · ${r.photosRead} photos read one by one` : ""}</summary>
             <ul className="mt-2 space-y-0.5">
-              {r.lines.map((x, i) => (
+              {[...r.lines].sort((a, b) => b.marketCad - a.marketCad).map((x, i) => (
                 <li key={i} className="flex justify-between gap-3 text-[var(--ink-2)]">
                   <span className="min-w-0 truncate" title={x.basis}>{x.label}</span>
                   <span className="shrink-0 num">{money(x.marketCad)}</span>
@@ -148,6 +158,12 @@ function QuoteCard({ q }: { q: Quote }) {
             </ul>
             {r.askSeller && <p className="mt-2 text-[var(--ink-2)]">❓ {r.askSeller}</p>}
           </details>
+          {r.offerSteal > 0 && (
+            <div className="mt-2 flex gap-2">
+              <button type="button" onClick={() => copy(true)} className="flex-1 rounded-lg border border-[var(--rule)] py-1.5 text-sm">{copied === "fr" ? "Copié ✓" : `Copy offer ${money(r.offerSteal)} (FR)`}</button>
+              <button type="button" onClick={() => copy(false)} className="flex-1 rounded-lg border border-[var(--rule)] py-1.5 text-sm">{copied === "en" ? "Copied ✓" : "Copy (EN)"}</button>
+            </div>
+          )}
         </>
       )}
     </article>

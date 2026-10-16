@@ -134,7 +134,7 @@ export async function setMessageResult(id: string, state: "sent" | "failed", err
 // ---------- Quotes: Ryan photographs a binder/collection, the Mac values it ----------
 export type Quote = { id: number; note: string | null; asking: number | null; status: "pending" | "working" | "done" | "failed"; result: QuoteResult | null; createdAt: string; photoCount: number };
 export type QuoteResult = {
-  summary: string; totalCards: number | null; resale: number; marketTotal: number; offerSteal: number; offerGood: number;
+  summary: string; totalCards: number | null; photosRead?: number; resale: number; marketTotal: number; offerSteal: number; offerGood: number;
   profitAtAsking: number | null; lines: { label: string; marketCad: number; netCad: number; basis: string }[]; askSeller: string; fakeRisk: string; error?: string;
 };
 
@@ -165,4 +165,7 @@ export async function claimQuote(): Promise<{ id: number; note: string | null; a
 // Photos are dropped once valued: they were only needed for the one read.
 export async function finishQuote(id: number, result: QuoteResult, failed: boolean) {
   await q(`UPDATE quotes SET status = $2, result = $3, photos = NULL, updated_at = now() WHERE id = $1`, [id, failed ? "failed" : "done", JSON.stringify(result)]);
+}
+export async function deleteQuote(id: number) {
+  await q(`DELETE FROM quotes WHERE id = $1`, [id]);
 }

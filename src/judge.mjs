@@ -363,10 +363,19 @@ export async function judge(cfg, l, { allowStage3 = true, detail = null } = {}) 
   if (detail) l = { ...(await detail(l)), hint: l.hint };
   const { dir, n } = await downloadImages(l, deep ? 12 : 4);
   try {
-    const ident = await runClaude(cfg, PROMPT({ ...l, hint }), n ? dir : null, {
+    let ident = await runClaude(cfg, PROMPT({ ...l, hint }), n ? dir : null, {
       model: cfg.judgeModel, schema: SCHEMA, system: fs.readFileSync(SKILL, 'utf8'), maxPx: n > 6 ? 900 : 1024,
     });
     let v = await value(cfg, l, ident);
+    // Promising or vintage collections get the photo-by-photo read before deciding: one call over many
+    // reduced photos misses about half the cards.
+    if (deep && n >= 2 && (['lot', 'mixed'].includes(ident.kind) || (ident.totalCardCount || 0) > 15)
+      && (v.resale >= 0.3 * v.price || /vintage|wotc|1st|1re|base set|shadowless|holo|vieille|old|collection|classeur|binder/i.test(`${l.title} ${l.description || ''}`))) {
+      const d = await readPhotosDeep(cfg, l, dir);
+      ident = withDeep(ident, d);
+      v = await value(cfg, l, ident);
+      log(`deep read ${l.id}: ${d.photosRead} photos, ${d.cards.length} cards → resale C$${v.resale.toFixed(0)}`);
+    }
     if (deep) v = await localDecision(cfg, l, ident, v);
     const shown = v.rejected ? { ...ident, summary: `${ident.summary} Not alerted: ${v.rejected}.` } : v.secondCheck ? { ...ident, summary: `${ident.summary} Second check: ${v.secondCheck}` } : ident;
     return { stage: 3, ...v, ident: shown, photos: n };
@@ -423,13 +432,70 @@ async function localDecision(cfg, l, ident, v) {
 export async function quoteLot(cfg, { id, note, asking }, dir) {
   const l = { source: 'quote', id: `quote:${id}`, title: note || 'Collection photographed for a buy quote', description: note || '', priceCad: asking ?? 0, location: 'Montréal', images: [] };
   const hint = 'Ryan photographed this collection in person to decide what to pay. List EVERY card worth roughly US$2+ across all photos (binder pages, piles, slabs), with set and number when readable. Estimate totalCardCount from the photos and the note.';
-  const ident = await runClaude(cfg, PROMPT({ ...l, hint }), dir, { model: cfg.judgeModel, schema: SCHEMA, system: fs.readFileSync(SKILL, 'utf8'), maxPx: 1100 });
+  // Overview (what it is, language, fakes) and a photo-by-photo read of every card, in parallel.
+  const [overview, deep] = await Promise.all([
+    runClaude(cfg, PROMPT({ ...l, hint }), dir, { model: cfg.judgeModel, schema: SCHEMA, system: fs.readFileSync(SKILL, 'utf8'), maxPx: 1100 }),
+    readPhotosDeep(cfg, l, dir),
+  ]);
+  const ident = withDeep(overview, deep);
   const v = await value(cfg, l, ident);
   const { steal, good } = cfg.deal;
   const floor5 = x => Math.max(0, Math.floor(x / 5) * 5);
   return {
-    summary: ident.summary, totalCards: ident.totalCardCount ?? null, resale: +v.resale.toFixed(2), marketTotal: +v.marketTotal.toFixed(2),
+    summary: ident.summary, totalCards: ident.totalCardCount ?? null, photosRead: deep.photosRead, resale: +v.resale.toFixed(2), marketTotal: +v.marketTotal.toFixed(2),
     offerSteal: floor5(v.resale / (1 + steal.minRoi)), offerGood: floor5(Math.min(v.resale / (1 + good.minRoi), v.resale - good.minProfitCad)),
     profitAtAsking: asking != null ? +(v.resale - asking).toFixed(2) : null, lines: v.lines, askSeller: ident.askSeller || '', fakeRisk: ident.fakeRisk,
   };
+}
+
+// ---------- Deep read: one photo at a time, full resolution ----------
+// Reading 10 binder photos in one call at reduced size misses most cards. Each photo alone at ~1600px
+// lets the model read names and numbers on every visible card; results are merged and priced as usual.
+const PHOTO_CARDS = {
+  type: 'object',
+  properties: {
+    cardsVisible: { type: 'integer' },
+    cards: SCHEMA.properties.cards,
+    sealed: SCHEMA.properties.sealed,
+  },
+  required: ['cardsVisible', 'cards', 'sealed'],
+};
+const PHOTO_PROMPT = (l, i, n) => `Photo ${i} of ${n} from a Pokémon card collection being valued for purchase ("${l.title}").
+${l.description ? `Seller's text: ${l.description.slice(0, 800)}\n` : ''}Look at this one photo closely. cardsVisible: how many cards you can see in it (count binder slots and piles).
+cards: EVERY card in this photo worth roughly US$2 or more: holos, reverse holos of good cards, ex/EX/GX/V/VMAX/VSTAR, full arts, illustration rares, trainer gallery, vintage WOTC rares, 1st Edition, shadowless, promos, slabs. English name (translate French/Japanese), collector number and set total if readable, set name, variant (1st/holo/reverse/normal), condition you can see (NM/LP/MP/HP/DMG, "unknown" if not visible), estUsd = raw near-mint TCGplayer market USD (or the slab's graded price, with grade). Never guess an expensive card you can't actually read; skip commons, uncommons and energies.
+sealed: any sealed product in this photo.`;
+
+export async function readPhotosDeep(cfg, l, dir) {
+  const files = fs.readdirSync(dir).filter(f => /^\d+\.(jpg|jpeg|png|webp)$/i.test(f)).sort((a, b) => parseInt(a) - parseInt(b));
+  const out = [];
+  // Three photos at a time: each is an independent read.
+  for (let i = 0; i < files.length; i += 3) {
+    out.push(...await Promise.all(files.slice(i, i + 3).map(async (f, k) => {
+      const one = path.join(dir, `one_${i + k}`);
+      fs.mkdirSync(one, { recursive: true });
+      fs.copyFileSync(path.join(dir, f), path.join(one, f));
+      try {
+        return await runClaude(cfg, PHOTO_PROMPT(l, i + k + 1, files.length), one, { model: cfg.judgeModel, schema: PHOTO_CARDS, system: 'You identify Pokémon cards in photos for a reseller. Be exact; skip what you cannot read.', maxPx: 1600 });
+      } catch (e) { log('deep read failed', l.id, f, e.message); return null; }
+      finally { fs.rmSync(one, { recursive: true, force: true }); }
+    })));
+  }
+  // The same card can appear in two photos (overview + close-up): keep the larger count per card, don't add.
+  const key = c => `${String(c.name).toLowerCase().replace(/[^a-z0-9]/g, '')}|${String(c.number || '').split('/')[0].replace(/^0+/, '')}|${c.grade || ''}`;
+  const cards = new Map();
+  for (const r of out.filter(Boolean)) {
+    const perPhoto = new Map();
+    for (const c of r.cards) perPhoto.set(key(c), { ...c, quantity: (perPhoto.get(key(c))?.quantity || 0) + Math.max(1, c.quantity || 1) });
+    for (const [k, c] of perPhoto) if (!cards.has(k) || cards.get(k).quantity < c.quantity) cards.set(k, c);
+  }
+  const sealed = out.filter(Boolean).flatMap(r => r.sealed || []);
+  return { cards: [...cards.values()], sealed, cardsVisible: out.filter(Boolean).reduce((a, r) => a + (r.cardsVisible || 0), 0), photosRead: out.filter(Boolean).length };
+}
+export { PROMPT as PROMPT_FOR_TEST, SCHEMA as SCHEMA_FOR_TEST };
+
+// Photo-by-photo cards replace the overview's list (they're read at full resolution); the overview keeps
+// the judgement calls: what the listing is, language, fakes, price scope.
+function withDeep(overview, d) {
+  if (!d?.photosRead) return overview;
+  return { ...overview, cards: d.cards.length ? d.cards : overview.cards, sealed: d.sealed.length ? d.sealed : overview.sealed, totalCardCount: Math.max(overview.totalCardCount || 0, d.cardsVisible) || null };
 }

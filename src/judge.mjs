@@ -418,3 +418,18 @@ async function localDecision(cfg, l, ident, v) {
   if (!r.confirm || p2 < good.minProfitCad || p2 / pay < good.minRoi) return reject(`second check rejected: ${r.reason}`);
   return { ...out, resale: Math.min(v.resale, r.fairResaleCad), profit: Math.min(v.resale, r.fairResaleCad) - pay, roi: (Math.min(v.resale, r.fairResaleCad) - pay) / pay, secondCheck: r.reason };
 }
+
+// ---------- Quotes: Ryan photographs a collection in person (show, seller's home, DMs) ----------
+export async function quoteLot(cfg, { id, note, asking }, dir) {
+  const l = { source: 'quote', id: `quote:${id}`, title: note || 'Collection photographed for a buy quote', description: note || '', priceCad: asking ?? 0, location: 'Montréal', images: [] };
+  const hint = 'Ryan photographed this collection in person to decide what to pay. List EVERY card worth roughly US$2+ across all photos (binder pages, piles, slabs), with set and number when readable. Estimate totalCardCount from the photos and the note.';
+  const ident = await runClaude(cfg, PROMPT({ ...l, hint }), dir, { model: cfg.judgeModel, schema: SCHEMA, system: fs.readFileSync(SKILL, 'utf8'), maxPx: 1100 });
+  const v = await value(cfg, l, ident);
+  const { steal, good } = cfg.deal;
+  const floor5 = x => Math.max(0, Math.floor(x / 5) * 5);
+  return {
+    summary: ident.summary, totalCards: ident.totalCardCount ?? null, resale: +v.resale.toFixed(2), marketTotal: +v.marketTotal.toFixed(2),
+    offerSteal: floor5(v.resale / (1 + steal.minRoi)), offerGood: floor5(Math.min(v.resale / (1 + good.minRoi), v.resale - good.minProfitCad)),
+    profitAtAsking: asking != null ? +(v.resale - asking).toFixed(2) : null, lines: v.lines, askSeller: ident.askSeller || '', fakeRisk: ident.fakeRisk,
+  };
+}

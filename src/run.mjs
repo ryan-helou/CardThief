@@ -15,6 +15,7 @@ import { distanceKm } from './geo.mjs';
 import { processOutbox } from './outbox.mjs';
 import { buildReport } from './report.mjs';
 import { trackOutcomes } from './outcomes.mjs';
+import { processQuotes } from './quotes.mjs';
 
 const ONCE = process.argv.includes('--once');
 const seen = new Seen('seen');
@@ -144,7 +145,7 @@ async function drain(cfg) {
 
 async function worker(cfg, until, lead, rawFirst = false) {
   while (queue.length && Date.now() < until && Date.now() >= judgePausedUntil) {
-    if (lead) { await processOutbox(); await beat(cfg); }
+    if (lead) { await processOutbox(); processQuotes(cfg); await beat(cfg); }
     const hourAgo = Date.now() - 3600e3;
     while (judgedAt.length && judgedAt[0] < hourAgo) judgedAt.shift();
     while (sonnetAt.length && sonnetAt[0] < hourAgo) sonnetAt.shift();
@@ -232,6 +233,7 @@ async function main() {
     await beat(c);
     await retryPendingDeals();
     await processOutbox();
+    processQuotes(c);
     if (ebayReady(c)) await trackOutcomes(c).catch(e => log('outcomes failed', e.message));
     await drain(c);
     await beat(c);

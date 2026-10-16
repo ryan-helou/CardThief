@@ -1,3 +1,4 @@
+import { QuoteTool } from "@/components/QuoteTool";
 import { DealControls } from "@/components/DealControls";
 import { PushButton } from "@/components/PushButton";
 import { listDeals, loadHeartbeat } from "@/lib/db";
@@ -135,6 +136,7 @@ const SECTIONS: { status: Status; title: string; folded?: boolean }[] = [
 
 const TABS = [
   { id: "deals", label: "Deals", icon: "M12 2l2.9 6.9L22 10l-5.5 4.7L18.2 22 12 18.3 5.8 22l1.7-7.3L2 10l7.1-1.1z" },
+  { id: "quote", label: "Quote", icon: "M3 7h4l2-3h6l2 3h4v13H3zM12 17a4 4 0 100-8 4 4 0 000 8z" },
   { id: "misses", label: "Near misses", icon: "M12 3a9 9 0 100 18 9 9 0 000-18zm0 4v5l3 3" },
   { id: "today", label: "Today", icon: "M4 20V10m6 10V4m6 16v-7m4 7H2" },
   { id: "rules", label: "Rules", icon: "M4 6h16M4 12h16M4 18h10" },
@@ -217,6 +219,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
             })}
           </div>
         )}
+        {tab === "quote" && <QuoteTool />}
         {tab === "misses" && <NearMisses items={hb?.nearMisses ?? []} soldLinks={soldLinks} />}
         {tab === "today" && <TodayView hb={hb} />}
         {tab === "rules" && <RulesView hb={hb} />}
@@ -224,7 +227,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
 
       {/* Fixed, not sticky: sticky bottom bars strand mid-screen in an installed iOS web app. */}
       <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-[var(--rule)] bg-[var(--surface)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-        <ul className="mx-auto grid max-w-xl grid-cols-4">
+        <ul className="mx-auto grid max-w-xl grid-cols-5">
           {TABS.map((t) => {
             const on = tab === t.id;
             return (

@@ -251,6 +251,23 @@ async function main() {
   log('done');
 }
 
+// Waking from sleep: a closed lid freezes Mint mid-task (half-done Chrome sweeps, network calls that
+// never return). When the clock jumps and the lid is open again, exit so launchd starts a fresh copy
+// right away. Dark wakes with the lid still closed are ignored (they last seconds).
+function lidOpen() {
+  try { return !/"AppleClamshellState" = Yes/.test(execFileSync('ioreg', ['-r', '-k', 'AppleClamshellState', '-d', '4'], { encoding: 'utf8' })); } catch { return true; }
+}
+let tick = Date.now(), asleepSince = 0;
+setInterval(() => {
+  const now = Date.now(), gap = now - tick;
+  tick = now;
+  if (gap > 3 * 60e3 && !asleepSince) asleepSince = now - gap;
+  if (asleepSince && lidOpen()) {
+    log(`woke up after ${Math.round((now - asleepSince) / 60e3)} min asleep, restarting fresh`);
+    process.exit(0); // the exit handler saves the price cache; launchd (KeepAlive) relaunches
+  }
+}, 5000).unref();
+
 // A stray stream error must never take the hunter down; log it and keep going.
 process.on('uncaughtException', e => log('uncaught', e.code || '', e.message));
 process.on('unhandledRejection', e => log('unhandled rejection', e?.message || String(e)));

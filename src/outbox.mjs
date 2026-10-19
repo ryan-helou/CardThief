@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { DATA, loadConfig, log } from './util.mjs';
-import { sendFacebookMessage } from './sources/facebook.mjs';
+import { sendFacebookMessage, browserBusy } from './sources/facebook.mjs';
 
 // Messages Ryan tapped Send on in the app wait in its outbox; the Mac sends them here,
 // one at a time, capped per day so Facebook doesn't flag the account.
@@ -34,6 +34,8 @@ export async function processOutbox() {
   let items;
   try { ({ items } = await api(cfg, 'GET')); } catch (e) { log('outbox fetch failed', e.message); return; }
   for (const it of items) {
+    // A Marketplace search has the browser: leave it queued, the next loop (~20 s after) retries.
+    if (it.id.startsWith('facebook:') && browserBusy()) { log(`outbox ${it.id}: waiting for the Marketplace search to finish`); return; }
     let result;
     if (sentToday() >= cfg.maxMessagesPerDay) {
       result = { state: 'failed', error: `Daily cap of ${cfg.maxMessagesPerDay} messages reached; send it yourself or wait until tomorrow.` };

@@ -376,7 +376,7 @@ export async function judge(cfg, l, { allowStage3 = true, detail = null } = {}) 
     // Every local collection gets the photo-by-photo read (lots are the core business); singles don't need it.
     // eBay lots arrive by the dozen an hour, so only the promising ones (resale at least half the cost) get it there.
     if (n >= 2 && (deep || (l.lot && v.resale >= 0.5 * v.cost)) && (['lot', 'mixed'].includes(ident.kind) || (ident.totalCardCount || 0) > 15)) {
-      const d = await readPhotosDeep(cfg, l, dir);
+      const d = await readPhotosDeep(cfg, l, dir, ident.summary);
       ident = withDeep(ident, d);
       v = await value(cfg, l, ident);
       log(`deep read ${l.id}: ${d.photosRead} photos, ${d.cards.length} cards → resale C$${v.resale.toFixed(0)}`);
@@ -479,19 +479,21 @@ const PHOTO_CARDS = {
   type: 'object',
   properties: {
     photoKind: { type: 'string', enum: ['physical_cards', 'screenshot_or_app', 'stock_or_catalog_image', 'other'] },
+    partOfSale: { type: 'boolean' },
     cardsVisible: { type: 'integer' },
     cards: SCHEMA.properties.cards,
     sealed: SCHEMA.properties.sealed,
   },
-  required: ['photoKind', 'cardsVisible', 'cards', 'sealed'],
+  required: ['photoKind', 'partOfSale', 'cardsVisible', 'cards', 'sealed'],
 };
-const PHOTO_PROMPT = (l, i, n) => `Photo ${i} of ${n} from a Pokémon card collection being valued for purchase ("${l.title}").
-${l.description ? `Seller's text: ${l.description.slice(0, 800)}\n` : ''}Look at this one photo closely. photoKind: "physical_cards" only if it is a real photo of actual cards, binders or slabs; "screenshot_or_app" for a phone screenshot, collection-tracker app (Collectr, TCGplayer, eBay), or price list; "stock_or_catalog_image" for official card art or a product image; "other" for anything else. Only physical cards are part of the lot.
+const PHOTO_PROMPT = (l, i, n, overview) => `Photo ${i} of ${n} from a Pokémon card collection being valued for purchase ("${l.title}").
+${l.description ? `Seller's text: ${l.description.slice(0, 800)}\n` : ''}${overview ? `A first look at all the photos together said: ${overview.slice(0, 600)}\n` : ''}Look at this one photo closely. photoKind: "physical_cards" only if it is a real photo of actual cards, binders or slabs; "screenshot_or_app" for a phone screenshot, collection-tracker app (Collectr, TCGplayer, eBay), or price list; "stock_or_catalog_image" for official card art or a product image; "other" for anything else. Only physical cards are part of the lot.
+partOfSale: false if this photo shows items that aren't what's for sale here (sellers add photos of other listings, their other cards or slabs, or unrelated things; the first look above may already say which), or the price clearly covers only some of the photos. When unsure, true.
 cardsVisible: how many cards you can see in it (count binder slots and piles).
 cards: EVERY card in this photo worth roughly US$2 or more: holos, reverse holos of good cards, ex/EX/GX/V/VMAX/VSTAR, full arts, illustration rares, trainer gallery, vintage WOTC rares, 1st Edition, shadowless, promos, slabs. English name (translate French/Japanese), collector number and set total if readable, set name, variant (1st/holo/reverse/normal), condition you can see (NM/LP/MP/HP/DMG, "unknown" if not visible), estUsd = raw near-mint TCGplayer market USD (or the slab's graded price, with grade). Never guess an expensive card you can't actually read; skip commons, uncommons and energies.
 sealed: any sealed product in this photo.`;
 
-export async function readPhotosDeep(cfg, l, dir) {
+export async function readPhotosDeep(cfg, l, dir, overview = '') {
   const files = fs.readdirSync(dir).filter(f => /^\d+\.(jpg|jpeg|png|webp)$/i.test(f)).sort((a, b) => parseInt(a) - parseInt(b));
   const out = [];
   // Three photos at a time: each is an independent read.
@@ -501,7 +503,7 @@ export async function readPhotosDeep(cfg, l, dir) {
       fs.mkdirSync(one, { recursive: true });
       fs.copyFileSync(path.join(dir, f), path.join(one, f));
       try {
-        return await runClaude(cfg, PHOTO_PROMPT(l, i + k + 1, files.length), one, { model: cfg.judgeModel, schema: PHOTO_CARDS, system: 'You identify Pokémon cards in photos for a reseller. Be exact; skip what you cannot read.', maxPx: 1600 });
+        return await runClaude(cfg, PHOTO_PROMPT(l, i + k + 1, files.length, overview), one, { model: cfg.judgeModel, schema: PHOTO_CARDS, system: 'You identify Pokémon cards in photos for a reseller. Be exact; skip what you cannot read.', maxPx: 1600 });
       } catch (e) { log('deep read failed', l.id, f, e.message); return null; }
       finally { fs.rmSync(one, { recursive: true, force: true }); }
     })));
@@ -510,14 +512,15 @@ export async function readPhotosDeep(cfg, l, dir) {
   const key = c => `${String(c.name).toLowerCase().replace(/[^a-z0-9]/g, '')}|${String(c.number || '').split('/')[0].replace(/^0+/, '')}|${c.grade || ''}`;
   const cards = new Map();
   // Screenshots of tracker apps and stock images show cards the seller may not be selling: never count them.
-  const real = out.filter(r => r && r.photoKind === 'physical_cards');
+  // So are photos of other things the seller owns (their other listings, slabs on a shelf).
+  const real = out.filter(r => r && r.photoKind === 'physical_cards' && r.partOfSale !== false);
   for (const r of real) {
     const perPhoto = new Map();
     for (const c of r.cards) perPhoto.set(key(c), { ...c, quantity: (perPhoto.get(key(c))?.quantity || 0) + Math.max(1, c.quantity || 1) });
     for (const [k, c] of perPhoto) if (!cards.has(k) || cards.get(k).quantity < c.quantity) cards.set(k, c);
   }
   const sealed = real.flatMap(r => r.sealed || []);
-  return { cards: [...cards.values()], sealed, cardsVisible: real.reduce((a, r) => a + (r.cardsVisible || 0), 0), photosRead: out.filter(Boolean).length, skippedPhotos: out.filter(r => r && r.photoKind !== 'physical_cards').length };
+  return { cards: [...cards.values()], sealed, cardsVisible: real.reduce((a, r) => a + (r.cardsVisible || 0), 0), photosRead: out.filter(Boolean).length, skippedPhotos: out.filter(Boolean).length - real.length };
 }
 export { PROMPT as PROMPT_FOR_TEST, SCHEMA as SCHEMA_FOR_TEST };
 

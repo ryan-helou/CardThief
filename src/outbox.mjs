@@ -28,6 +28,7 @@ async function api(cfg, method, body) {
   return res.json();
 }
 
+const waiting = new Set();
 export async function processOutbox() {
   const cfg = loadConfig();
   if (!cfg.appUrl || !cfg.agentToken) return;
@@ -35,7 +36,7 @@ export async function processOutbox() {
   try { ({ items } = await api(cfg, 'GET')); } catch (e) { log('outbox fetch failed', e.message); return; }
   for (const it of items) {
     // A Marketplace search has the browser: leave it queued, the next loop (~20 s after) retries.
-    if (it.id.startsWith('facebook:') && browserBusy()) { log(`outbox ${it.id}: waiting for the Marketplace search to finish`); return; }
+    if (it.id.startsWith('facebook:') && browserBusy()) { if (!waiting.has(it.id)) log(`outbox ${it.id}: waiting for the Marketplace search to finish`); waiting.add(it.id); return; }
     let result;
     if (sentToday() >= cfg.maxMessagesPerDay) {
       result = { state: 'failed', error: `Daily cap of ${cfg.maxMessagesPerDay} messages reached; send it yourself or wait until tomorrow.` };

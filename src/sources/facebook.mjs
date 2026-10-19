@@ -7,6 +7,22 @@ import { DATA, log, sleep, jitter } from '../util.mjs';
 // via `npm run fb-login`. One browser per sweep, closed afterwards, paced like a person.
 export const PROFILE = path.join(DATA, 'fb-profile');
 
+// Only one Chrome can use the profile at a time. Sweeps run in the background, so everything that
+// opens it goes through this lock; callers that shouldn't wait check browserBusy() first.
+let lock = Promise.resolve(), holders = 0;
+export const browserBusy = () => holders > 0;
+async function withBrowser(cfg, fn) {
+  holders++;
+  const prev = lock;
+  let release;
+  lock = new Promise(r => (release = r));
+  await prev;
+  try {
+    const ctx = await openBrowser({ headless: cfg.facebook.headless });
+    try { return await fn(ctx); } finally { await Promise.race([ctx.close(), sleep(30_000)]).catch(() => {}); }
+  } finally { holders--; release(); }
+}
+
 export async function openBrowser({ headless }) {
   return chromium.launchPersistentContext(PROFILE, {
     channel: 'chrome',
@@ -50,8 +66,8 @@ async function readTiles(page) {
   );
 }
 
-export async function sweepFacebook(cfg) {
-  const ctx = await openBrowser({ headless: cfg.facebook.headless });
+export const sweepFacebook = cfg => withBrowser(cfg, ctx => sweep(cfg, ctx));
+async function sweep(cfg, ctx) {
   const page = ctx.pages()[0] || (await ctx.newPage());
   const found = new Map();
   // Chrome sometimes crawls (one sweep took 58 minutes): cap the sweep and every step in it.
@@ -102,17 +118,15 @@ export async function sweepFacebook(cfg) {
       log(`facebook "${q}": ${tiles.length} tiles`);
       await sleep(jitter(cfg.facebook.pauseBetweenQueriesSec * 1000));
     }
-  } finally {
-    await capped(ctx.close(), 30_000, 'closing browser').catch(() => {});
-  }
+  } finally {}
   return [...found.values()];
 }
 
 // Listing page: full description and every photo. Opened only for candidates.
-export async function facebookDetail(cfg, listing) {
-  const ctx = await openBrowser({ headless: cfg.facebook.headless });
+export const facebookDetail = (cfg, listing) => withBrowser(cfg, ctx => detail(listing, ctx));
+async function detail(listing, ctx) {
   const page = ctx.pages()[0] || (await ctx.newPage());
-  try {
+  {
     await page.goto(listing.url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     await sleep(jitter(3500));
     if (await loggedOut(page)) throw new Error('facebook: logged out — run `npm run fb-login`');
@@ -142,17 +156,15 @@ export async function facebookDetail(cfg, listing) {
     }
     const images = [...new Set([...more, ...info.imgs, ...listing.images])].slice(0, 12);
     return { ...listing, title: info.title || listing.title, description: info.text, images };
-  } finally {
-    await ctx.close();
   }
 }
 
 // Sends one message to a listing's seller. Only ever called for a message Ryan tapped
 // Send on in the app. dryRun types the text but stops before sending (for testing).
-export async function sendFacebookMessage(cfg, url, text, { dryRun = false, shot = null } = {}) {
-  const ctx = await openBrowser({ headless: cfg.facebook.headless });
+export const sendFacebookMessage = (cfg, url, text, opts = {}) => withBrowser(cfg, ctx => send(url, text, opts, ctx));
+async function send(url, text, { dryRun = false, shot = null }, ctx) {
   const page = ctx.pages()[0] || (await ctx.newPage());
-  try {
+  {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     await sleep(jitter(4000));
     if (await loggedOut(page)) throw new Error('facebook: logged out — run `npm run fb-login`');
@@ -186,7 +198,5 @@ export async function sendFacebookMessage(cfg, url, text, { dryRun = false, shot
     const stillTyped = (await box.innerText().catch(() => box.inputValue().catch(() => ''))).includes(text.slice(0, 20));
     if (stillTyped) throw new Error('message did not send (still in the box)');
     return { ok: true };
-  } finally {
-    await ctx.close();
   }
 }

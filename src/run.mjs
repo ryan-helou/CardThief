@@ -259,7 +259,8 @@ async function main() {
 // never return). When the clock jumps and the lid is open again, exit so launchd starts a fresh copy
 // right away. Dark wakes with the lid still closed are ignored (they last seconds).
 function lidOpen() {
-  try { return !/"AppleClamshellState" = Yes/.test(execFileSync('ioreg', ['-r', '-k', 'AppleClamshellState', '-d', '4'], { encoding: 'utf8' })); } catch { return true; }
+  // Only a definite "No" counts as open: during a dark wake the read can fail or come back empty.
+  try { return /"AppleClamshellState" = No/.test(execFileSync('ioreg', ['-r', '-k', 'AppleClamshellState', '-d', '4'], { encoding: 'utf8', timeout: 5000 })); } catch { return false; }
 }
 let tick = Date.now(), asleepSince = 0;
 setInterval(() => {

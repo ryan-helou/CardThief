@@ -45,6 +45,7 @@ function remaining() {
 const spent = []; // [time, credits]
 function resetAt() { try { return JSON.parse(fs.readFileSync(usageFile, 'utf8')).resetAt; } catch { return 0; } }
 export function pptPaced() {
+  if (process.env.PPT_FORCE_PACED) return false; // tests: behave as if over the pace
   const hourAgo = Date.now() - 3600e3;
   while (spent.length && spent[0][0] < hourAgo) spent.shift();
   const used = spent.reduce((a, [, n]) => a + n, 0);

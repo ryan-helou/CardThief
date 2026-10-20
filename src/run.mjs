@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { loadConfig, log, sleep, jitter, Seen, appendJsonl, DATA } from './util.mjs';
 import { searchKijiji, kijijiDetail } from './sources/kijiji.mjs';
-import { searchEbay, ebayDetail, ebayReady } from './sources/ebay.mjs';
+import { searchEbay, ebayDetail, ebayReady, ebayCallsToday } from './sources/ebay.mjs';
 import { sweepFacebook, facebookDetail, inActiveHours } from './sources/facebook.mjs';
 import { prefilter, judge, aiUsage } from './judge.mjs';
 import { judgeSlab } from './slabs.mjs';
@@ -39,7 +39,10 @@ async function enqueue(cfg, l) {
   if (l.source !== 'ebay' && cfg.maxDistanceKm) {
     const d = await distanceKm(l.location);
     if (d != null) l.distanceKm = d;
-    if (d != null && d > cfg.maxDistanceKm) { seen.add(l.id); appendJsonl('skipped', { at: new Date().toISOString(), id: l.id, title: l.title, price: l.priceCad, why: `${d} km away` }); return; }
+    // A whole collection is worth a longer drive (Ottawa, Québec City): farther listings stay if they look like one.
+    const lotLike = /\b(lot|collection|classeur|binder|cartes|cards|bulk|vrac)\b/i.test(l.title) && (l.priceCad === 0 || l.priceCad >= 100);
+    const limit = lotLike ? (cfg.maxDistanceKmLots ?? cfg.maxDistanceKm) : cfg.maxDistanceKm;
+    if (d != null && d > limit) { seen.add(l.id); appendJsonl('skipped', { at: new Date().toISOString(), id: l.id, title: l.title, price: l.priceCad, why: `${d} km away` }); return; }
   }
   const age = Date.now() - new Date(l.postedAt).getTime();
   // Old or bumped ad. Auctions are exempt: they're listed days before the ending we care about.
@@ -159,9 +162,10 @@ async function worker(cfg, until, lead, rawFirst = false) {
     queue.sort((a, b) => group(a) - group(b));
     // When the hourly full-check cap is used up, local listings (which always need one) wait; eBay keeps going.
     const sonnetFull = sonnetAt.length >= cfg.maxJudgementsPerHour;
-    // Over the sold-price budget pace: eBay slabs wait (newest first when it frees up) rather than be judged blind.
+    // Over the sold-price budget pace, slabs are first screened against other live listings (free eBay calls)
+    // and only the ones priced below them use a sold-price lookup; they wait only when eBay's quota is low too.
     // Lots (priority) and the raw test (gates its own lookups) keep going.
-    const ebayOk = cfg.mode !== 'slabs' || pptPaced();
+    const ebayOk = cfg.mode !== 'slabs' || pptPaced() || ebayCallsToday() < (cfg.slabs?.maxEbayCallsPerDay ?? 4500);
     const pick = queue.findIndex(x => (x.source === 'ebay' && (ebayOk || x.lot || x.raw)) || (x.source !== 'ebay' && !fbBusy && !(fbSweeping && x.source === 'facebook') && !(sonnetFull && cfg.deepLocal !== false)));
     if (pick < 0) {
       if (!ebayOk) { if (lead) log(`price-lookup budget paced, ${queue.length} waiting`); return; }

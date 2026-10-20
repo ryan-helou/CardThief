@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DATA, log } from './util.mjs';
 import { priceCard, getFx } from './price.mjs';
-import { pptPrice, pptAvailable, pptSales } from './ppt.mjs';
+import { pptPrice, pptAvailable, pptSales, pptPaced } from './ppt.mjs';
 import { parseTitle, verifySlabPhotos, identifySlabAI, runClaude } from './judge.mjs';
 import { activeComps, ebayDetail } from './sources/ebay.mjs';
 import { checkPsaCert, certFromListing } from './psa.mjs';
@@ -132,6 +132,17 @@ export async function judgeSlab(cfg, l) {
   // count against eBay's 5,000/day, so they only run for slabs that could be a deal.
   // Asking prices are not values: a Squawkabilly ex PSA 10 was "listed from C$96" while it actually
   // sells for ~US$26 (Collectr, 2026-10-10). Only real sales can make an alert.
+  // Sold-price lookups over their daily pace: screen against other live copies first (free), and spend a
+  // lookup only on slabs priced at or below them. Most slabs are listed above the cheapest copy.
+  let comps = null;
+  const pickyComps = async () => { try { return await activeComps(cfg, card, grade, l.id, fx, { japanese, pristine: /pristine/i.test(l.title) }); } catch (e) { log('active comps failed', e.message); return null; } };
+  if (pptPaced()) { /* within the pace: value first, as usual */ } else {
+    comps = await pickyComps();
+    if (comps?.count >= s.minComps && !isAuctionL) {
+      const offerRoom = l.buyingOptions?.includes('BEST_OFFER') && cost <= comps.cheapest * (1 + s.offerSlack);
+      if (cost > comps.cheapest * (1 - s.minBelowCheapest) && !offerRoom) return pass(`C$${cost.toFixed(0)} all-in; ${comps.count} others listed from C$${comps.cheapest.toFixed(0)}`, { cost });
+    }
+  }
   let sold = pptAvailable() ? await gradePrice({ ...card, grade }) : null;
   if (!sold) return pass(`no eBay sold data for ${card.name} ${card.number} ${grade}`, { cost });
   // PPT's "CGC 10" mixes Gem Mint 10 and the pricier Pristine 10 (a Mew ex 158/128 "CGC 10" alerted off
@@ -147,8 +158,7 @@ export async function judgeSlab(cfg, l) {
       return pass(`${grade} at C$${cost.toFixed(0)} all-in vs ~C$${(sold.usd * fx.USD).toFixed(0)} (${sold.basis}).`, { cost, resale: quickResale, profit: quickResale - cost, roi: (quickResale - cost) / cost });
     }
   }
-  let comps = null;
-  try { comps = await activeComps(cfg, card, grade, l.id, fx, { japanese, pristine: /pristine/i.test(l.title) }); } catch (e) { log('active comps failed', e.message); }
+  if (!comps) comps = await pickyComps();
   if (comps?.count >= s.minComps) {
     const beatsAll = cost <= comps.cheapest * (1 - s.minBelowCheapest);
     const offerRoom = l.buyingOptions?.includes('BEST_OFFER') && cost <= comps.cheapest * (1 + s.offerSlack);

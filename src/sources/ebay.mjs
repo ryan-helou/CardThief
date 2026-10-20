@@ -4,7 +4,8 @@ import { fetchJson as rawFetchJson, log, DATA } from '../util.mjs';
 
 // Every eBay call is counted per day: the free limit is 5,000.
 const callsFile = path.join(DATA, 'ebay-calls.json');
-const day = () => new Date().toISOString().slice(0, 10);
+// eBay's daily quota resets at midnight Pacific, not UTC.
+const day = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 export function ebayCallsToday() {
   try { const c = JSON.parse(fs.readFileSync(callsFile, 'utf8')); return c.day === day() ? c.n : 0; } catch { return 0; }
 }

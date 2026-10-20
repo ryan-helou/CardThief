@@ -7,7 +7,12 @@
       "https://www.kijiji.ca/b-grand-montreal/cartes-pokemon/k0l80002?sort=dateDesc",
       "https://www.kijiji.ca/b-grand-montreal/classeur-pokemon/k0l80002?sort=dateDesc",
       "https://www.kijiji.ca/b-grand-montreal/collection-pokemon/k0l80002?sort=dateDesc",
-      "https://www.kijiji.ca/b-grand-montreal/lot-cartes-pokemon/k0l80002?sort=dateDesc"
+      "https://www.kijiji.ca/b-grand-montreal/lot-cartes-pokemon/k0l80002?sort=dateDesc",
+      "https://www.kijiji.ca/b-ville-de-quebec/pokemon/k0l1700124?sort=dateDesc",
+      "https://www.kijiji.ca/b-gatineau/pokemon/k0l1700186?sort=dateDesc",
+      "https://www.kijiji.ca/b-ottawa/pokemon/k0l1700185?sort=dateDesc",
+      "https://www.kijiji.ca/b-sherbrooke-qc/pokemon/k0l1700156?sort=dateDesc",
+      "https://www.kijiji.ca/b-trois-rivieres/pokemon/k0l1700150?sort=dateDesc"
     ]
   },
   "ebay": {
@@ -20,7 +25,8 @@
         "q": "pokemon",
         "categoryIds": "183455",
         "filter": "deliveryCountry:CA,buyingOptions:{FIXED_PRICE|BEST_OFFER},price:[20..2000],priceCurrency:CAD",
-        "lot": true
+        "lot": true,
+        "everyMinutes": 2
       },
       {
         "label": "Pokémon card lot auctions ending within the hour",
@@ -29,19 +35,15 @@
         "filter": "deliveryCountry:CA,buyingOptions:{AUCTION}",
         "sort": "endingSoonest",
         "endWithinMin": 60,
-        "lot": true
+        "lot": true,
+        "everyMinutes": 3
       },
       {
-        "label": "Canadian slabs",
+        "label": "Slabs shipping to Canada (Buy It Now / Best Offer)",
         "q": "pokemon",
         "categoryIds": "183454",
-        "filter": "conditionIds:{2750},itemLocationCountry:CA"
-      },
-      {
-        "label": "All slabs shipping to Canada (Buy It Now)",
-        "q": "pokemon",
-        "categoryIds": "183454",
-        "filter": "conditionIds:{2750},deliveryCountry:CA,buyingOptions:{FIXED_PRICE}"
+        "filter": "conditionIds:{2750},deliveryCountry:CA,buyingOptions:{FIXED_PRICE|BEST_OFFER}",
+        "everyMinutes": 2
       },
       {
         "label": "Slab auctions ending within the hour",
@@ -49,13 +51,8 @@
         "categoryIds": "183454",
         "filter": "conditionIds:{2750},deliveryCountry:CA,buyingOptions:{AUCTION}",
         "sort": "endingSoonest",
-        "endWithinMin": 60
-      },
-      {
-        "label": "Slabs from anywhere that take Best Offer",
-        "q": "pokemon",
-        "categoryIds": "183454",
-        "filter": "conditionIds:{2750},deliveryCountry:CA,buyingOptions:{BEST_OFFER}"
+        "endWithinMin": 60,
+        "everyMinutes": 3
       },
       {
         "label": "Raw singles shipping to Canada (Buy It Now, shadow test)",
@@ -63,7 +60,8 @@
         "categoryIds": "183454",
         "filter": "conditionIds:{4000},deliveryCountry:CA,buyingOptions:{FIXED_PRICE},price:[20..500],priceCurrency:CAD",
         "raw": true,
-        "everyMinutes": 3
+        "everyMinutes": 3,
+        "enabled": false
       }
     ]
   },
@@ -156,7 +154,7 @@
   "pptMinCad": 3,
   "deepLocal": true,
   "raw": {
-    "enabled": true,
+    "enabled": false,
     "shadow": true,
     "minNmCad": 50,
     "minSales30": 5,
@@ -192,5 +190,6 @@
   "lots": {
     "maxBuyCad": 2000,
     "maxBids": 3
-  }
+  },
+  "maxDistanceKmLots": 270
 }

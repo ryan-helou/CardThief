@@ -134,8 +134,10 @@ export async function activeComps(cfg, card, grade, selfId, fx, { japanese = fal
   const res = await fetchJson(`https://api.ebay.com/buy/browse/v1/item_summary/search?${params}`, {
     headers: { authorization: `Bearer ${t}`, 'X-EBAY-C-MARKETPLACE-ID': cfg.ebay.marketplace, 'X-EBAY-C-ENDUSERCTX': `contextualLocation=${encodeURIComponent('country=CA,zip=H7T2W7')}` },
   });
-  const gradeRe = new RegExp(`\\b${grader}\\s*-?\\s*${g.replace('.', '\\.')}(?![\\d.])`, 'i');
-  const numRe = new RegExp(`(#|\\b)0*${num}\\b`);
+  // Card numbers and grades come from listing titles ("+2", "SV-P"): escape them before building patterns.
+  const esc = x => String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const gradeRe = new RegExp(`\\b${esc(grader)}\\s*-?\\s*${esc(g)}(?![\\d.])`, 'i');
+  const numRe = new RegExp(`(#|\\b)0*${esc(num)}\\b`);
   const tax = cfg.money.buyerTaxOnline;
   const prices = (res.itemSummaries || [])
     .filter(it => `ebay:${it.legacyItemId}` !== selfId && gradeRe.test(it.title) && numRe.test(it.title))

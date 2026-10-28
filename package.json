@@ -8,7 +8,8 @@
     "once": "node src/run.mjs --once",
     "judge": "node src/judge-one.mjs",
     "test-alert": "node src/notify.mjs --test",
-    "fb-login": "node src/fb-login.mjs"
+    "fb-login": "node src/fb-login.mjs",
+    "sales-login": "node src/sales-login.mjs"
   },
   "engines": {
     "node": ">=20"

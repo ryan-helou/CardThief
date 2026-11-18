@@ -1,6 +1,12 @@
+<div align="center">
+
 # CardThief
 
-A personal tool that watches online listings for Pokémon cards that are priced well below what they're worth.
+**A personal tool that watches online listings for Pokémon cards that are priced well below what they're worth.**
+
+</div>
+
+<br>
 
 It runs on a home computer and keeps checking Kijiji, Facebook Marketplace and eBay for new Pokémon card listings in and around Montréal. For each one, it filters out obvious junk, estimates what the cards are worth using recent prices, and uses AI (a computer program that can read text and photos) to judge whether the listing is a real bargain. When it finds one, it sends an alert to the owner's phone. It is a private project built for one person's card buying, not a public service.
 

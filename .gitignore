@@ -1,3 +1,4 @@
 node_modules
 data/
 config.local.json
+.claude/

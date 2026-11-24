@@ -4,6 +4,8 @@
 
 **A personal tool that watches online listings for Pokémon cards that are priced well below what they're worth.**
 
+<!-- facts --><img alt="Watches: 3 marketplaces" src="https://img.shields.io/badge/Watches-3_marketplaces-24292f?style=for-the-badge"> <img alt="Checks: every 1 to 15 min" src="https://img.shields.io/badge/Checks-every_1_to_15_min-24292f?style=for-the-badge"> <img alt="Runs on: a home Mac" src="https://img.shields.io/badge/Runs_on-a_home_Mac-24292f?style=for-the-badge">
+
 </div>
 
 <br>
